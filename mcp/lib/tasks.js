@@ -10,14 +10,16 @@ const TYPES = {
 const clean = s => (!s || s === '-' || s === 'ー' || s === '—') ? '' : s;
 
 /**
- * @returns {{ lines: string[], days: Map<string, object[]> }}
+ * @returns {{ lines: string[], days: Map<string, object[]>, headers: Map<string, number> }}
  *   task: { id, date, index, done, time, type, kind, proj, title, memo, at, memoAt }
- *   at     … その行の lines 上の位置
- *   memoAt … メモを構成している行の位置（複数可）
+ *   at      … その行の lines 上の位置
+ *   memoAt  … メモを構成している行の位置（複数可）
+ *   headers … 日付見出しの行の位置
  */
 export function parse(text) {
   const lines = text.split(/\r?\n/);
   const days = new Map();
+  const headers = new Map();
   let curDate = null, curTask = null;
 
   lines.forEach((raw, i) => {
@@ -27,7 +29,7 @@ export function parse(text) {
     const d = line.match(/^#\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (d) {
       curDate = `${d[1]}-${String(d[2]).padStart(2, '0')}-${String(d[3]).padStart(2, '0')}`;
-      if (!days.has(curDate)) days.set(curDate, []);
+      if (!days.has(curDate)) { days.set(curDate, []); headers.set(curDate, i); }
       curTask = null;
       return;
     }
@@ -74,7 +76,7 @@ export function parse(text) {
     }
   });
 
-  return { lines, days };
+  return { lines, days, headers };
 }
 
 /** チェック欄だけを差し替える。行の他の部分には触らない。 */
@@ -156,4 +158,142 @@ export function snapshot(days, scope = 'window', tz = 'Asia/Tokyo', now = new Da
       date, rel, tasks: (days.get(date) || []).map(view)
     }))
   };
+}
+
+/* ---------- 書き換え（text を受け取って text を返す） ----------
+   どれも「読む → 該当箇所だけ直す → 返す」。呼び出し側は結果を丸ごと保存する。 */
+
+const assertDate = d => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d))) throw new Error(`日付の形式が違います: ${d}（例: 2026-08-28）`);
+  return d;
+};
+
+const assertTitle = s => {
+  const v = String(s ?? '').trim();
+  if (!v) throw new Error('タスク名が空です');
+  if (/[\r\n]/.test(v)) throw new Error('タスク名に改行は入れられません');
+  return v;
+};
+
+const field = s => {
+  const v = String(s ?? '').trim();
+  if (/[\r\n|]/.test(v)) throw new Error(`「${v}」に改行や | は入れられません`);
+  return v === '-' ? '' : v;
+};
+
+/** タスク1行を組み立てる。空の欄は「-」で埋め、末尾の空欄は落とす。 */
+export function formatTask(t, bullet = '-') {
+  const title = assertTitle(t.title);
+  const lead = [field(t.time), field(t.type), field(t.proj)];
+  let last = -1;
+  lead.forEach((v, i) => { if (v) last = i; });
+  // タスク名に | が入る場合は、4欄そろえないと解析時に取り違える
+  if (title.includes('|')) last = 2;
+  const head = `${bullet} [${t.done ? 'x' : ' '}] `;
+  if (last < 0) return head + title;
+  return head + [...lead.slice(0, last + 1).map(v => v || '-'), title].join(' | ');
+}
+
+const memoBlock = (memo, indent = '  ') =>
+  String(memo ?? '').split('\n').map(s => s.trim()).filter(Boolean).map(s => indent + 'memo: ' + s);
+
+const normalize = t => ({
+  done: !!t.done,
+  time: field(t.time), type: field(t.type), proj: field(t.project ?? t.proj),
+  title: assertTitle(t.title), memo: String(t.memo ?? '')
+});
+
+const brief = t => ({ id: t.id, title: t.title });
+
+export function setDone(text, ids, done) {
+  const { lines, days } = parse(text);
+  const targets = ids.map(id => findTask(days, id));
+  const hit = targets.filter(t => t.done !== done);
+  for (const t of hit) writeDone(lines, t.at, done);
+  return { text: lines.join('\n'), updated: hit.map(brief), skipped: targets.length - hit.length };
+}
+
+export function setMemo(text, id, memo) {
+  const { lines, days } = parse(text);
+  const task = findTask(days, id);
+  if ((task.memo || '').trim() !== String(memo ?? '').trim()) writeMemo(lines, task, memo);
+  return { text: lines.join('\n'), task: brief(task) };
+}
+
+/** 欄を部分的に差し替える。渡さなかった欄はそのまま、空文字を渡すと空にする。 */
+export function updateTask(text, id, patch) {
+  const { lines, days } = parse(text);
+  const t = findTask(days, id);
+  const pick = (v, cur) => v === undefined ? cur : field(v);
+  const next = {
+    done: t.done,
+    time: pick(patch.time, t.time),
+    type: pick(patch.type, t.type),
+    proj: pick(patch.project, t.proj),
+    title: patch.title === undefined ? t.title : assertTitle(patch.title)
+  };
+  const m = lines[t.at].match(/^(\s*)([-*])/);
+  lines[t.at] = (m ? m[1] : '') + formatTask(next, m ? m[2] : '-');
+  return { text: lines.join('\n'), task: { id: t.id, ...next, project: next.proj } };
+}
+
+export function removeTasks(text, ids) {
+  const { lines, days } = parse(text);
+  const targets = ids.map(id => findTask(days, id));
+  const kill = new Set();
+  for (const t of targets) { kill.add(t.at); t.memoAt.forEach(i => kill.add(i)); }
+  [...kill].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+  return { text: lines.join('\n'), removed: targets.map(brief) };
+}
+
+/**
+ * 指定日にタスクを足す。日付見出しがなければ作る。
+ * position: "end"（既定）その日の最後 / "start" 先頭
+ * replace: true ならその日の既存タスクを先に全部消す
+ */
+export function addTasks(text, date, items, { position = 'end', replace = false } = {}) {
+  assertDate(date);
+  const list = (items || []).map(normalize);
+  if (!list.length) throw new Error('追加するタスクがありません');
+
+  let cur = text;
+  if (replace) {
+    const ids = (parse(cur).days.get(date) || []).map(t => t.id);
+    if (ids.length) cur = removeTasks(cur, ids).text;
+  }
+
+  const { lines, days, headers } = parse(cur);
+  const block = list.flatMap(t => [formatTask(t), ...memoBlock(t.memo)]);
+
+  if (headers.has(date)) {
+    const tasks = days.get(date) || [];
+    const at = (position === 'start' || !tasks.length)
+      ? headers.get(date) + 1
+      : Math.max(tasks.at(-1).at, ...tasks.at(-1).memoAt) + 1;
+    lines.splice(at, 0, ...block);
+  } else {
+    // 日付順に並んでいるファイルなら、その位置に差し込む。でなければ末尾。
+    const later = [...headers.entries()].filter(([d]) => d > date).sort((a, b) => a[1] - b[1])[0];
+    if (later) {
+      lines.splice(later[1], 0, `# ${date}`, ...block, '');
+    } else {
+      while (lines.length && lines.at(-1).trim() === '') lines.pop();
+      lines.push('', `# ${date}`, ...block, '');
+    }
+  }
+  return { text: lines.join('\n'), date, added: list.map(t => t.title), replaced: replace };
+}
+
+/** 別の日付へ移す（繰り越し）。チェック・メモ・欄はそのまま持っていく。 */
+export function moveTasks(text, ids, date, position = 'end') {
+  assertDate(date);
+  const { days } = parse(text);
+  const targets = ids.map(id => findTask(days, id));
+  if (targets.some(t => t.date === date)) throw new Error(`既に ${date} にあるタスクが含まれています`);
+  const carried = targets.map(t => ({
+    done: t.done, time: t.time, type: t.type, project: t.proj, title: t.title, memo: t.memo
+  }));
+  const cut = removeTasks(text, ids).text;
+  const out = addTasks(cut, date, carried, { position });
+  return { text: out.text, moved: targets.map(brief), to: date };
 }
