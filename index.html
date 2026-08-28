@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>3日間タスク</title>
+<style>
+:root{
+  --bg:#f6f6f4; --panel:#ffffff; --line:#e3e2dd; --line-soft:#eeedea;
+  --ink:#1c1b19; --ink-2:#5f5d57; --ink-3:#8d8a82;
+  --accel:#1f6f4a; --accel-bg:#e4f0e9;
+  --routine:#8a5a12; --routine-bg:#f6ecd9;
+  --done:#9a9790; --today:#1c1b19;
+  --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -16px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#131311; --panel:#1c1c1a; --line:#2e2e2b; --line-soft:#26251f;
+    --ink:#eceae4; --ink-2:#a5a29a; --ink-3:#76736c;
+    --accel:#7fd0a4; --accel-bg:#1b3128;
+    --routine:#e3b169; --routine-bg:#332715;
+    --done:#6a6760; --today:#eceae4;
+    --shadow:none;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  font-size:15px; line-height:1.6;
+  padding:0 0 env(safe-area-inset-bottom);
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:640px;margin:0 auto;padding:0 14px 56px}
+
+header{
+  position:sticky; top:0; z-index:10;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:saturate(180%) blur(12px);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);
+  border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  margin:0 -14px 16px;
+  display:flex; align-items:baseline; gap:10px;
+}
+h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
+.sub{font-size:12px;color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
+.reload{
+  appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
+  font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer;
+}
+.reload:active{opacity:.6}
+
+.day{margin:0 0 22px}
+.day-head{
+  display:flex; align-items:baseline; gap:8px;
+  padding:0 2px 8px; border-bottom:1px solid var(--line);
+  margin-bottom:10px;
+}
+.day-date{font-size:13px;font-weight:650;letter-spacing:.03em;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.day-rel{font-size:11px;color:var(--ink-3)}
+.day-count{margin-left:auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.day.is-today .day-date{color:var(--today)}
+.day.is-today .day-head{border-bottom-color:var(--ink-3)}
+.day.is-today .day-rel{
+  color:var(--bg); background:var(--ink); border-radius:999px;
+  padding:1px 7px; font-weight:650;
+}
+
+.task{
+  background:var(--panel); border:1px solid var(--line); border-radius:11px;
+  padding:11px 13px; margin-bottom:7px; box-shadow:var(--shadow);
+  display:grid; grid-template-columns:auto 1fr; gap:0 11px; align-items:start;
+}
+.box{
+  width:19px;height:19px;border-radius:6px;border:1.5px solid var(--ink-3);
+  margin-top:2px; display:grid; place-items:center; flex:none;
+}
+.task.done .box{background:var(--ink-3);border-color:var(--ink-3)}
+.task.done .box::after{content:"";width:9px;height:5px;border:2px solid var(--panel);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.title{font-size:15px;font-weight:500;line-height:1.45;word-break:break-word}
+.task.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px;font-weight:400}
+
+.meta{grid-column:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.tag{font-size:11px;line-height:1.5;padding:1px 8px;border-radius:999px;white-space:nowrap;font-weight:550}
+.tag.t-accel{color:var(--accel);background:var(--accel-bg)}
+.tag.t-routine{color:var(--routine);background:var(--routine-bg)}
+.tag.t-proj{color:var(--ink-2);background:var(--line-soft);font-weight:500}
+.tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
+.task.done .tag{opacity:.5}
+
+.memo{
+  grid-column:2; margin-top:8px; padding:7px 10px;
+  border-left:2px solid var(--line); background:var(--line-soft);
+  border-radius:0 7px 7px 0;
+  font-size:13px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word;
+}
+
+.empty{color:var(--ink-3);font-size:13px;padding:6px 2px 2px}
+.note{font-size:12px;color:var(--ink-3);text-align:center;margin-top:26px;line-height:1.7}
+.err{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;color:var(--ink-2);font-size:13px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
+details.other{margin-top:8px}
+details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6px 2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>3日間タスク</h1>
+    <button class="reload" id="reload">更新</button>
+    <span class="sub" id="stamp"></span>
+  </header>
+  <main id="app"><div class="empty">読み込み中…</div></main>
+  <p class="note">タスクは <code>tasks.txt</code> を GitHub 上で編集すると反映されます。<br>メモも同じファイルに書きます。</p>
+</div>
+
+<script>
+const TYPE_MAP = {
+  '前進':'accel','前進型':'accel','ぜんしん':'accel','A':'accel',
+  'ルーチン':'routine','ルーチン型':'routine','R':'routine'
+};
+
+function parse(text){
+  const days = new Map();
+  let curDate = null, curTask = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { continue; }
+    if (line.startsWith('//')) { continue; }
+
+    const d = line.match(/^#\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (d) {
+      curDate = `${d[1]}-${String(d[2]).padStart(2,'0')}-${String(d[3]).padStart(2,'0')}`;
+      if (!days.has(curDate)) days.set(curDate, []);
+      curTask = null;
+      continue;
+    }
+
+    const t = line.match(/^[-*]\s*\[([ xX✓])\]\s*(.*)$/);
+    if (t && curDate) {
+      const done = t[1].toLowerCase() !== ' ';
+      const parts = t[2].split('|').map(s => s.trim());
+      let time='', type='', proj='', title='';
+      if (parts.length >= 4) { [time, type, proj] = parts; title = parts.slice(3).join(' | '); }
+      else if (parts.length === 3) { [time, type] = parts; title = parts[2]; }
+      else if (parts.length === 2) { time = parts[0]; title = parts[1]; }
+      else { title = parts[0]; }
+      curTask = { done, time: clean(time), type: clean(type), proj: clean(proj), title, memo: '' };
+      days.get(curDate).push(curTask);
+      continue;
+    }
+
+    const m = line.match(/^(?:memo|メモ)\s*[:：]\s*(.*)$/i);
+    if (m && curTask) {
+      curTask.memo = curTask.memo ? curTask.memo + '\n' + m[1] : m[1];
+      continue;
+    }
+    if (curTask && /^[>|]/.test(line)) {
+      const extra = line.replace(/^[>|]\s?/, '');
+      curTask.memo = curTask.memo ? curTask.memo + '\n' + extra : extra;
+    }
+  }
+  return days;
+}
+const clean = s => (!s || s === '-' || s === 'ー' || s === '—') ? '' : s;
+
+function ymd(dt){
+  return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+}
+function label(key){
+  const [y,m,d] = key.split('-').map(Number);
+  const dow = ['日','月','火','水','木','金','土'][new Date(y, m-1, d).getDay()];
+  return `${m}月${d}日（${dow}）`;
+}
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+
+function renderDay(key, rel, tasks, isToday){
+  const sec = el('section', 'day' + (isToday ? ' is-today' : ''));
+  const head = el('div','day-head');
+  head.append(el('span','day-date', label(key)), el('span','day-rel', rel));
+  const list = tasks || [];
+  if (list.length) head.append(el('span','day-count', `${list.filter(t=>t.done).length}/${list.length}`));
+  sec.append(head);
+
+  if (!list.length) { sec.append(el('div','empty','—')); return sec; }
+
+  for (const t of list) {
+    const card = el('div','task' + (t.done ? ' done' : ''));
+    card.append(el('div','box'), el('div','title', t.title));
+    const meta = el('div','meta');
+    if (t.time) meta.append(el('span','tag t-time', t.time));
+    if (t.type) {
+      const k = TYPE_MAP[t.type] || '';
+      meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
+    }
+    if (t.proj) meta.append(el('span','tag t-proj', t.proj));
+    if (meta.childNodes.length) card.append(meta);
+    if (t.memo) card.append(el('div','memo', t.memo));
+    sec.append(card);
+  }
+  return sec;
+}
+
+function render(days){
+  const app = document.getElementById('app');
+  app.textContent = '';
+  const now = new Date();
+  const todayKey = ymd(now);
+  const window3 = [-1, 0, 1].map(off => {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + off);
+    return { key: ymd(dt), rel: ['昨日','今日','明日'][off + 1] };
+  });
+
+  for (const w of window3) {
+    app.append(renderDay(w.key, w.rel, days.get(w.key), w.key === todayKey));
+  }
+
+  const others = [...days.keys()].filter(k => !window3.some(w => w.key === k)).sort();
+  if (others.length) {
+    const det = el('details','other');
+    det.append(el('summary', null, `その他の日（${others.length}日分）`));
+    for (const k of others) det.append(renderDay(k, '', days.get(k), false));
+    app.append(det);
+  }
+
+  document.getElementById('stamp').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
+}
+
+async function load(){
+  try {
+    const res = await fetch('tasks.txt?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    render(parse(await res.text()));
+  } catch (e) {
+    const app = document.getElementById('app');
+    app.textContent = '';
+    const box = el('div','err');
+    box.append(document.createTextNode('tasks.txt を読み込めませんでした（' + e.message + '）。'));
+    app.append(box);
+  }
+}
+
+document.getElementById('reload').addEventListener('click', load);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+load();
+</script>
+</body>
+</html>
