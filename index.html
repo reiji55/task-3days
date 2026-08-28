@@ -13,6 +13,7 @@
   --accel:#1f6f4a; --accel-bg:#e4f0e9;
   --routine:#8a5a12; --routine-bg:#f6ecd9;
   --done:#9a9790; --today:#1c1b19;
+  --warn:#a8341f;
   --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -16px rgba(0,0,0,.18);
 }
 @media (prefers-color-scheme: dark){
@@ -22,6 +23,7 @@
     --accel:#7fd0a4; --accel-bg:#1b3128;
     --routine:#e3b169; --routine-bg:#332715;
     --done:#6a6760; --today:#eceae4;
+    --warn:#f0917c;
     --shadow:none;
   }
 }
@@ -78,9 +80,13 @@ h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
 .box{
   width:19px;height:19px;border-radius:6px;border:1.5px solid var(--ink-3);
   margin-top:2px; display:grid; place-items:center; flex:none;
+  padding:0; background:transparent; appearance:none;
 }
+button.box{cursor:pointer}
+button.box:active{transform:scale(.9)}
 .task.done .box{background:var(--ink-3);border-color:var(--ink-3)}
 .task.done .box::after{content:"";width:9px;height:5px;border:2px solid var(--panel);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.task.busy{opacity:.5}
 .title{font-size:15px;font-weight:500;line-height:1.45;word-break:break-word}
 .task.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px;font-weight:400}
 
@@ -91,6 +97,11 @@ h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
 .tag.t-proj{color:var(--ink-2);background:var(--line-soft);font-weight:500}
 .tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
 .task.done .tag{opacity:.5}
+.memo-add{
+  appearance:none;border:1px dashed var(--line);background:transparent;color:var(--ink-3);
+  font:inherit;font-size:11px;padding:1px 8px;border-radius:999px;cursor:pointer;
+}
+.memo-add:active{opacity:.6}
 
 .memo{
   grid-column:2; margin-top:8px; padding:7px 10px;
@@ -98,6 +109,20 @@ h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
   border-radius:0 7px 7px 0;
   font-size:13px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word;
 }
+.can-edit .memo{cursor:text}
+.memo-edit{grid-column:2;margin-top:8px}
+.memo-edit textarea{
+  display:block;width:100%;min-height:64px;resize:vertical;
+  font:inherit;font-size:13px;line-height:1.6;color:var(--ink);
+  background:var(--panel);border:1px solid var(--ink-3);border-radius:7px;padding:7px 10px;
+}
+.memo-edit .row{display:flex;gap:6px;margin-top:6px}
+.memo-edit button{
+  appearance:none;font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
+}
+.memo-edit button.primary{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:600}
+.memo-edit button:active{opacity:.6}
 
 .empty{color:var(--ink-3);font-size:13px;padding:6px 2px 2px}
 .note{font-size:12px;color:var(--ink-3);text-align:center;margin-top:26px;line-height:1.7}
@@ -105,6 +130,41 @@ h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
 details.other{margin-top:8px}
 details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6px 2px}
+
+#bar{
+  display:flex;align-items:center;gap:8px;
+  margin:0 0 14px;font-size:12px;color:var(--ink-3);
+}
+#mode{font-weight:600}
+#mode.rw{color:var(--accel)}
+#say{margin-left:auto;font-variant-numeric:tabular-nums}
+#say.bad{color:var(--warn)}
+.gear{
+  appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
+  font:inherit;font-size:12px;padding:2px 10px;border-radius:999px;cursor:pointer;
+}
+.gear:active{opacity:.6}
+#panel{
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  padding:13px;margin:0 0 18px;box-shadow:var(--shadow);font-size:13px;color:var(--ink-2);
+}
+#panel[hidden]{display:none}
+#panel h2{font-size:13px;font-weight:650;margin:0 0 8px;color:var(--ink)}
+#panel p{margin:0 0 9px;line-height:1.65}
+#panel ol{margin:0 0 9px;padding-left:1.3em;line-height:1.75}
+#panel input{
+  display:block;width:100%;font:inherit;font-size:13px;color:var(--ink);
+  background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin:0 0 8px;
+}
+#panel .row{display:flex;gap:6px}
+#panel button{
+  appearance:none;font:inherit;font-size:12px;padding:5px 13px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink-2);
+}
+#panel button.primary{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:600}
+#panel button:active{opacity:.6}
+#panel .warn{color:var(--warn)}
+#panel a{color:inherit}
 </style>
 </head>
 <body>
@@ -114,30 +174,68 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
     <button class="reload" id="reload">更新</button>
     <span class="sub" id="stamp"></span>
   </header>
+
+  <div id="bar">
+    <span id="mode">読み取り専用</span>
+    <button class="gear" id="gear">設定</button>
+    <span id="say"></span>
+  </div>
+
+  <section id="panel" hidden>
+    <h2>編集を有効にする</h2>
+    <p>GitHub のアクセストークンをこの端末に保存すると、チェックとメモをタップで編集できます。トークンはこの端末の中だけに保存され、リポジトリには入りません。</p>
+    <ol>
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained トークンを作る</a></li>
+      <li>Repository access → Only select repositories → <code>task-3days</code></li>
+      <li>Permissions → Repository permissions → <b>Contents</b> を <b>Read and write</b></li>
+      <li>できたトークンを下に貼って保存</li>
+    </ol>
+    <input id="tok" type="password" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
+    <div class="row">
+      <button class="primary" id="tok-save">保存</button>
+      <button id="tok-clear">削除</button>
+      <button id="panel-close">閉じる</button>
+    </div>
+    <p class="warn" style="margin-top:10px">このリポジトリは public です。<code>tasks.txt</code> の中身は誰でも読めます。固有名詞は書かないでください。</p>
+  </section>
+
   <main id="app"><div class="empty">読み込み中…</div></main>
-  <p class="note">タスクは <code>tasks.txt</code> を GitHub 上で編集すると反映されます。<br>メモも同じファイルに書きます。</p>
+  <p class="note">タスクは <code>tasks.txt</code> に保存されます。<br>チェックとメモはこの画面から、行の追加や削除は GitHub 上で。</p>
 </div>
 
 <script>
+const REPO = { owner:'reiji55', name:'task-3days', path:'tasks.txt', branch:'main' };
+const TOKEN_KEY = 'task3days.token';
+const API = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.path}`;
+
 const TYPE_MAP = {
   '前進':'accel','前進型':'accel','ぜんしん':'accel','A':'accel',
   'ルーチン':'routine','ルーチン型':'routine','R':'routine'
 };
 
+let token = null;      // 端末に保存された GitHub トークン。null なら読み取り専用
+let lines = [];        // tasks.txt の現在の中身を1行ずつ。編集はここを直接いじる
+let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替える
+let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
+let busy = null;       // 保存中の Promise。連打しても直列に流す
+
+/* ---------- tasks.txt の読み書き ---------- */
+
 function parse(text){
+  lines = text.split(/\r?\n/);
   const days = new Map();
   let curDate = null, curTask = null;
-  for (const raw of text.split(/\r?\n/)) {
+  lines.forEach((raw, i) => {
     const line = raw.trim();
-    if (!line) { continue; }
-    if (line.startsWith('//')) { continue; }
+    if (!line) return;
+    if (line.startsWith('//')) return;
 
     const d = line.match(/^#\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (d) {
       curDate = `${d[1]}-${String(d[2]).padStart(2,'0')}-${String(d[3]).padStart(2,'0')}`;
       if (!days.has(curDate)) days.set(curDate, []);
       curTask = null;
-      continue;
+      return;
     }
 
     const t = line.match(/^[-*]\s*\[([ xX✓])\]\s*(.*)$/);
@@ -149,24 +247,104 @@ function parse(text){
       else if (parts.length === 3) { [time, type] = parts; title = parts[2]; }
       else if (parts.length === 2) { time = parts[0]; title = parts[1]; }
       else { title = parts[0]; }
-      curTask = { done, time: clean(time), type: clean(type), proj: clean(proj), title, memo: '' };
+      curTask = { done, time: clean(time), type: clean(type), proj: clean(proj), title, memo:'', at:i, memoAt:[] };
       days.get(curDate).push(curTask);
-      continue;
+      return;
     }
 
     const m = line.match(/^(?:memo|メモ)\s*[:：]\s*(.*)$/i);
     if (m && curTask) {
       curTask.memo = curTask.memo ? curTask.memo + '\n' + m[1] : m[1];
-      continue;
+      curTask.memoAt.push(i);
+      return;
     }
     if (curTask && /^[>|]/.test(line)) {
       const extra = line.replace(/^[>|]\s?/, '');
       curTask.memo = curTask.memo ? curTask.memo + '\n' + extra : extra;
+      curTask.memoAt.push(i);
     }
-  }
+  });
   return days;
 }
 const clean = s => (!s || s === '-' || s === 'ー' || s === '—') ? '' : s;
+
+// チェック欄だけを差し替える。行の他の部分には触らない
+function writeDone(at, done){
+  lines[at] = lines[at].replace(/^(\s*[-*]\s*\[)[ xX✓](\])/, (_, a, b) => a + (done ? 'x' : ' ') + b);
+}
+
+// メモ行を丸ごと差し替える。1行につき memo: を1本、で往復できる
+function writeMemo(task, text){
+  const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
+  const block = text.split('\n').map(s => s.trim()).filter(Boolean).map(s => indent + 'memo: ' + s);
+  const old = task.memoAt.slice().sort((a,b) => a - b);
+  if (old.length) {
+    for (let k = old.length - 1; k >= 0; k--) lines.splice(old[k], 1);
+    lines.splice(old[0], 0, ...block);
+  } else {
+    lines.splice(task.at + 1, 0, ...block);
+  }
+}
+
+/* ---------- GitHub API ---------- */
+
+function b64encode(s){
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decode(s){
+  const bin = atob(s.replace(/\s/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+const auth = () => ({ Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' });
+
+async function apiRead(){
+  const res = await fetch(`${API}?ref=${REPO.branch}&t=${Date.now()}`, { headers: auth(), cache:'no-store' });
+  if (!res.ok) throw new Error(res.status === 401 ? 'トークンが無効です' : 'HTTP ' + res.status);
+  const json = await res.json();
+  sha = json.sha;
+  return b64decode(json.content);
+}
+
+async function apiWrite(text, message){
+  const res = await fetch(API, {
+    method:'PUT',
+    headers: { ...auth(), 'Content-Type':'application/json' },
+    body: JSON.stringify({ message, content: b64encode(text), sha, branch: REPO.branch })
+  });
+  if (res.status === 409 || res.status === 422) throw new Error('conflict');
+  if (!res.ok) throw new Error(res.status === 401 ? 'トークンが無効です' : 'HTTP ' + res.status);
+  sha = (await res.json()).content.sha;
+}
+
+// lines を書き換えたあとに呼ぶ。保存 → 再描画までまとめて面倒を見る
+function save(message){
+  const run = async () => {
+    say('保存中…');
+    const text = lines.join('\n');
+    try {
+      await apiWrite(text, message);
+      render(parse(text));
+      say('保存しました');
+    } catch (e) {
+      if (e.message === 'conflict') {
+        say('他で更新されていたので読み直しました', true);
+        await load();
+      } else {
+        say(e.message, true);
+        await load();
+      }
+    }
+  };
+  busy = (busy || Promise.resolve()).then(run, run);
+  return busy;
+}
+
+/* ---------- 表示 ---------- */
 
 function ymd(dt){
   return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
@@ -177,6 +355,40 @@ function label(key){
   return `${m}月${d}日（${dow}）`;
 }
 const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+
+function say(msg, bad){
+  const n = document.getElementById('say');
+  n.textContent = msg || '';
+  n.classList.toggle('bad', !!bad);
+}
+
+function openMemoEditor(card, task){
+  if (card.querySelector('.memo-edit')) return;
+  editing = true;
+  const wrap = el('div','memo-edit');
+  const ta = el('textarea');
+  ta.value = task.memo;
+  const row = el('div','row');
+  const ok = el('button', 'primary', '保存');
+  const cancel = el('button', null, 'やめる');
+  row.append(ok, cancel);
+  wrap.append(ta, row);
+
+  const shown = card.querySelector('.memo');
+  if (shown) shown.hidden = true;
+  card.append(wrap);
+  ta.focus();
+
+  const close = () => { editing = false; wrap.remove(); if (shown) shown.hidden = false; };
+  cancel.addEventListener('click', close);
+  ok.addEventListener('click', () => {
+    const next = ta.value;
+    close();
+    if (next.trim() === task.memo.trim()) return;
+    writeMemo(task, next);
+    save(`tasks: メモを更新（${task.title}）`);
+  });
+}
 
 function renderDay(key, rel, tasks, isToday){
   const sec = el('section', 'day' + (isToday ? ' is-today' : ''));
@@ -189,8 +401,22 @@ function renderDay(key, rel, tasks, isToday){
   if (!list.length) { sec.append(el('div','empty','—')); return sec; }
 
   for (const t of list) {
-    const card = el('div','task' + (t.done ? ' done' : ''));
-    card.append(el('div','box'), el('div','title', t.title));
+    const card = el('div','task' + (t.done ? ' done' : '') + (token ? ' can-edit' : ''));
+
+    let box;
+    if (token) {
+      box = el('button','box');
+      box.setAttribute('aria-label', (t.done ? '未完了に戻す: ' : '完了にする: ') + t.title);
+      box.addEventListener('click', () => {
+        card.classList.add('busy');
+        writeDone(t.at, !t.done);
+        save(`tasks: ${t.done ? '未完了に戻す' : '完了'}（${t.title}）`);
+      });
+    } else {
+      box = el('div','box');
+    }
+    card.append(box, el('div','title', t.title));
+
     const meta = el('div','meta');
     if (t.time) meta.append(el('span','tag t-time', t.time));
     if (t.type) {
@@ -198,8 +424,18 @@ function renderDay(key, rel, tasks, isToday){
       meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
     }
     if (t.proj) meta.append(el('span','tag t-proj', t.proj));
+    if (token && !t.memo) {
+      const add = el('button','memo-add','＋メモ');
+      add.addEventListener('click', () => openMemoEditor(card, t));
+      meta.append(add);
+    }
     if (meta.childNodes.length) card.append(meta);
-    if (t.memo) card.append(el('div','memo', t.memo));
+
+    if (t.memo) {
+      const memo = el('div','memo', t.memo);
+      if (token) memo.addEventListener('click', () => openMemoEditor(card, t));
+      card.append(memo);
+    }
     sec.append(card);
   }
   return sec;
@@ -231,11 +467,25 @@ function render(days){
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
 }
 
+function showMode(){
+  const n = document.getElementById('mode');
+  n.textContent = token ? '編集できます' : '読み取り専用';
+  n.classList.toggle('rw', !!token);
+}
+
+/* ---------- 読み込み ---------- */
+
 async function load(){
   try {
-    const res = await fetch('tasks.txt?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    render(parse(await res.text()));
+    let text;
+    if (token) {
+      text = await apiRead();
+    } else {
+      const res = await fetch('tasks.txt?t=' + Date.now(), { cache:'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      text = await res.text();
+    }
+    render(parse(text));
   } catch (e) {
     const app = document.getElementById('app');
     app.textContent = '';
@@ -245,8 +495,57 @@ async function load(){
   }
 }
 
-document.getElementById('reload').addEventListener('click', load);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+/* ---------- トークン ---------- */
+
+function loadToken(){
+  try { token = localStorage.getItem(TOKEN_KEY) || null; }
+  catch (e) { token = null; }
+  showMode();
+}
+
+document.getElementById('gear').addEventListener('click', () => {
+  const p = document.getElementById('panel');
+  p.hidden = !p.hidden;
+  if (!p.hidden) document.getElementById('tok').value = '';
+});
+document.getElementById('panel-close').addEventListener('click', () => {
+  document.getElementById('panel').hidden = true;
+});
+document.getElementById('tok-save').addEventListener('click', async () => {
+  const v = document.getElementById('tok').value.trim();
+  if (!v) { say('トークンが空です', true); return; }
+  const prev = token;
+  token = v;
+  say('確認中…');
+  try {
+    await apiRead();
+    try { localStorage.setItem(TOKEN_KEY, v); }
+    catch (e) { say('保存できませんでした（プライベートブラウズ？）', true); }
+    document.getElementById('tok').value = '';
+    document.getElementById('panel').hidden = true;
+    showMode();
+    say('編集を有効にしました');
+    await load();
+  } catch (e) {
+    token = prev;
+    showMode();
+    say(e.message, true);
+  }
+});
+document.getElementById('tok-clear').addEventListener('click', async () => {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  token = null; sha = null;
+  document.getElementById('tok').value = '';
+  showMode();
+  render(parse(lines.join('\n')));   // 読み込みを待たずに操作を止める
+  say('トークンを削除しました');
+  await load();
+});
+
+document.getElementById('reload').addEventListener('click', () => { say(''); load(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing) load(); });
+
+loadToken();
 load();
 </script>
 </body>
