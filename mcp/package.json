@@ -5,7 +5,7 @@
   "type": "module",
   "description": "3日間タスクビューアの tasks.txt を読み書きする MCP サーバー",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

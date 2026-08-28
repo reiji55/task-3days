@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse, writeDone, writeMemo, findTask, snapshot, todayKey, windowKeys } from '../lib/tasks.js';
 
-const ORIG = readFileSync(new URL('../../tasks.txt', import.meta.url), 'utf8');
+const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
 
 test('parse: 日付ごとにタスクを拾い、メモを畳む', () => {
   const { days } = parse(ORIG);

@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { handle } from '../lib/handler.js';
 
-const ORIG = readFileSync(new URL('../../tasks.txt', import.meta.url), 'utf8');
+const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
 const KEY = 'test-key-0123456789';
 
 let store, commits, http, base;
