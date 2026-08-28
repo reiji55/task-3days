@@ -1,0 +1,14 @@
+{
+  "name": "task-3days-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "3日間タスクビューアの tasks.txt を読み書きする MCP サーバー",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.3"
+  }
+}
