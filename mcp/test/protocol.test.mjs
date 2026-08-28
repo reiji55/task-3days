@@ -184,3 +184,38 @@ test('GitHub 側が落ちてもエラーとして返る', async () => {
   await client.close();
   boom.close();
 });
+
+test('ホストがパラメータを渡さなくても URL から合鍵を拾う', async () => {
+  const alt = createHttp((req, res) => {
+    let raw = '';
+    req.on('data', c => { raw += c; });
+    req.on('end', () => {
+      req.body = raw || undefined;      // 生の文字列のまま渡す（解析しないホスト）
+      handle(req, res, undefined, fakeIo());   // key を渡さない
+    });
+  });
+  await new Promise(r => alt.listen(0, '127.0.0.1', r));
+  store = { text: ORIG, sha: 'sha0' };
+  commits = [];
+
+  const client = new Client({ name: 'test', version: '1.0.0' });
+  await client.connect(new StreamableHTTPClientTransport(
+    new URL(`http://127.0.0.1:${alt.address().port}/api/mcp/${KEY}`)));
+  const out = payload(await client.callTool({ name: 'get_tasks', arguments: {} }));
+  assert.equal(out.days.flatMap(d => d.tasks).length, 9);
+  await client.close();
+  alt.close();
+});
+
+test('URL から拾った合鍵も違えば弾く', async () => {
+  const alt = createHttp((req, res) => {
+    let raw = '';
+    req.on('data', c => { raw += c; });
+    req.on('end', () => { req.body = raw || undefined; handle(req, res, undefined, fakeIo()); });
+  });
+  await new Promise(r => alt.listen(0, '127.0.0.1', r));
+  const client = new Client({ name: 'test', version: '1.0.0' });
+  await assert.rejects(() => client.connect(new StreamableHTTPClientTransport(
+    new URL(`http://127.0.0.1:${alt.address().port}/api/mcp/nope`))));
+  alt.close();
+});

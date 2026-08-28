@@ -19,9 +19,25 @@ function deny(res, status, message) {
   }));
 }
 
+/** ホスト側がパラメータを渡してこない場合に備えて URL からも拾う。 */
+export function keyFromUrl(url = '') {
+  const m = String(url).match(/\/mcp\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+/** ホストが本文を解析済みのことも、生のままのこともある。どちらでも受ける。 */
+function bodyOf(req) {
+  const b = req.body;
+  if (b == null) return undefined;
+  if (typeof b === 'string' || Buffer.isBuffer(b)) {
+    try { return JSON.parse(b.toString('utf8')); } catch { return undefined; }
+  }
+  return b;
+}
+
 export async function handle(req, res, key, io) {
   if (!process.env.MCP_KEY) return deny(res, 500, 'MCP_KEY が設定されていません');
-  if (!keyMatches(key, process.env.MCP_KEY)) return deny(res, 404, 'not found');
+  if (!keyMatches(key || keyFromUrl(req.url), process.env.MCP_KEY)) return deny(res, 404, 'not found');
 
   const server = createServer(io);
   const transport = new StreamableHTTPServerTransport({
@@ -33,7 +49,7 @@ export async function handle(req, res, key, io) {
 
   try {
     await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    await transport.handleRequest(req, res, bodyOf(req));
   } catch (e) {
     if (!res.headersSent) deny(res, 500, String(e.message || e));
   }
