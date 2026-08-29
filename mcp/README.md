@@ -66,10 +66,23 @@ Vercel のプロジェクト設定で入れる。**コードにもリポジト�
 
 ## デプロイ
 
-Vercel で **Import Git Repository** → `reiji55/task-3days` →
-**Root Directory を `mcp` に設定**。フレームワークは Other のままでよい。
+Vercel で **Import Git Repository** → `reiji55/task-3days`。
+**Root Directory を `mcp` に**、Framework Preset は `Other`、Build / Output は空のまま。
+環境変数を入れてから Deploy する。
 
-デプロイ後、環境変数を入れて再デプロイ。接続先はこの形になる:
+以降は **`main` への push で自動デプロイ**される。
+
+### 詰まりやすいところ
+
+- **Git を後から繋いだ場合、その時点では何もデプロイされない。** 次の push で初めて走る。
+  Overview に「No Production Deployment」と出ていて Deployments が空なら、これ。
+  適当なコミットを push すれば動き出す。
+- **Deployments が0件だと Redeploy ボタンは出ない。** 「やり直す元」が無いため。
+- Root Directory が `mcp` でないと、リポジトリ直下（ビューア）が配信され
+  `/api/mcp/...` は 404 になる。あとから Settings → Build and Deployment で直せる。
+- 環境変数は入れただけでは効かない。入れたあとに再デプロイが要る。
+
+### 接続先
 
 ```
 https://<プロジェクト名>.vercel.app/api/mcp/<MCP_KEY>
@@ -77,6 +90,17 @@ https://<プロジェクト名>.vercel.app/api/mcp/<MCP_KEY>
 
 この URL を claude.ai の設定 → コネクタ → カスタムコネクタを追加 に貼る。
 `MCP_KEY` が合わない URL には `404` を返すので、存在自体が分からない。
+
+疎通だけ見るなら:
+
+```bash
+curl -sS -X POST '<上の URL>' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+`serverInfo` が返れば繋がっている。
 
 ## テスト
 
