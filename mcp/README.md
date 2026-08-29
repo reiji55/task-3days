@@ -47,6 +47,7 @@ lib/handler.js     合鍵の照合と MCP トランスポート（ステート�
 lib/server.js      ツールの定義
 lib/tasks.js       tasks.txt の解析と書き換え（純粋関数）
 lib/github.js      GitHub Contents API
+public/index.html  / に置く案内ページ。動作には無関係
 test/              node --test で全部走る
 ```
 
@@ -81,6 +82,9 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
 - Root Directory が `mcp` でないと、リポジトリ直下（ビューア）が配信され
   `/api/mcp/...` は 404 になる。あとから Settings → Build and Deployment で直せる。
 - 環境変数は入れただけでは効かない。入れたあとに再デプロイが要る。
+- `/` を開いて `404: NOT_FOUND` なら、`public/index.html` が配信されていない。
+  Root Directory が `mcp` でないか、Output Directory を明示していないか。
+  API だけなら 404 のままでも動作には影響しない。
 
 ### 接続先
 
