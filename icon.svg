@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!-- 3日分のタスク。上=昨日（完了）、中=今日、下=明日。
+       iOS は角を自分で丸めるので、背景は正方形のまま塗りつぶす。 -->
+  <rect width="180" height="180" fill="#171614"/>
+
+  <!-- 昨日：チェック済み -->
+  <rect x="28" y="42" width="26" height="26" rx="8" fill="#5fbf8d"/>
+  <path d="M35 55.5 l5.5 5.5 l10.5 -12" fill="none" stroke="#171614"
+        stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="66" y="49" width="86" height="12" rx="6" fill="#46443f"/>
+
+  <!-- 今日：これから -->
+  <rect x="28" y="77" width="26" height="26" rx="8" fill="none" stroke="#f2f0ea" stroke-width="3.5"/>
+  <rect x="66" y="84" width="86" height="12" rx="6" fill="#f2f0ea"/>
+
+  <!-- 明日 -->
+  <rect x="28" y="112" width="26" height="26" rx="8" fill="none" stroke="#6b6862" stroke-width="3.5"/>
+  <rect x="66" y="119" width="66" height="12" rx="6" fill="#6b6862"/>
+</svg>
