@@ -191,37 +191,36 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 
   <section id="panel" hidden>
     <h2>編集を有効にする</h2>
-    <p>GitHub のアクセストークンをこの端末に保存すると、チェックとメモをタップで編集できます。トークンはこの端末の中だけに保存され、リポジトリには入りません。</p>
-    <ol>
-      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained トークンを作る</a></li>
-      <li>Repository access → Only select repositories → <code>task-3days</code></li>
-      <li>Permissions → Repository permissions → <b>Contents</b> を <b>Read and write</b></li>
-      <li>できたトークンを下に貼って保存</li>
-    </ol>
-    <input id="tok" type="password" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
+    <p>暗証番号を入れると、チェックとメモをタップで編集できます。<br>
+       この端末に覚えさせるので、入れるのは1回だけです。</p>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="暗証番号">
     <div class="row">
-      <button class="primary" id="tok-save">保存</button>
-      <button id="tok-clear">削除</button>
+      <button class="primary" id="pin-save">保存</button>
+      <button id="pin-clear">削除</button>
       <button id="panel-close">閉じる</button>
     </div>
-    <p class="warn" style="margin-top:10px">このリポジトリは public です。<code>tasks.txt</code> の中身は誰でも読めます。固有名詞は書かないでください。</p>
+    <p style="margin-top:10px">
+      消えてしまうのが煩わしければ、<code>?k=暗証番号</code> を付けた URL を<br>
+      ホーム画面に追加してください。端末の記憶が消えても効きます。
+    </p>
   </section>
 
   <main id="app"><div class="empty">読み込み中…</div></main>
-  <p class="note">タスクは <code>tasks.txt</code> に保存されます。<br>チェックとメモはこの画面から、行の追加や削除は GitHub 上で。</p>
+  <p class="note">タスクは <code>tasks.txt</code> に保存されます。<br>チェックとメモはこの画面から、行の追加や削除は Claude に。</p>
 </div>
 
 <script>
-const REPO = { owner:'reiji55', name:'task-3days', path:'tasks.txt', branch:'main' };
-const TOKEN_KEY = 'task3days.token';
-const API = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.path}`;
+// 書き込みは Vercel 側の API を通す。GitHub のトークンはあちらにあり、
+// ここには来ない。この画面が持つのは暗証番号だけ。
+const API = 'https://task-3days-mcp-server.vercel.app/api/tasks';
+const PIN_KEY = 'task3days.pin';
 
 const TYPE_MAP = {
   '前進':'accel','前進型':'accel','ぜんしん':'accel','A':'accel',
   'ルーチン':'routine','ルーチン型':'routine','R':'routine'
 };
 
-let token = null;      // 端末に保存された GitHub トークン。null なら読み取り専用
+let pin = null;        // 端末に覚えさせた暗証番号。null なら読み取り専用
 let lines = [];        // tasks.txt の現在の中身を1行ずつ。編集はここを直接いじる
 let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替える
 let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
@@ -294,39 +293,35 @@ function writeMemo(task, text){
   }
 }
 
-/* ---------- GitHub API ---------- */
+/* ---------- 保存先の API ---------- */
 
-function b64encode(s){
-  const bytes = new TextEncoder().encode(s);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
+async function fail(res){
+  let msg = '';
+  try { msg = (await res.json()).error || ''; } catch { /* 本文なし */ }
+  if (res.status === 401) return new Error('暗証番号が違います');
+  if (res.status === 503) return new Error('サーバー側の設定が未完了です');
+  return new Error(msg || 'HTTP ' + res.status);
 }
-function b64decode(s){
-  const bin = atob(s.replace(/\s/g, ''));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
-const auth = () => ({ Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' });
 
 async function apiRead(){
-  const res = await fetch(`${API}?ref=${REPO.branch}&t=${Date.now()}`, { headers: auth(), cache:'no-store' });
-  if (!res.ok) throw new Error(res.status === 401 ? 'トークンが無効です' : 'HTTP ' + res.status);
+  const res = await fetch(`${API}?t=${Date.now()}`, {
+    headers: { 'X-Pin': pin }, cache:'no-store'
+  });
+  if (!res.ok) throw await fail(res);
   const json = await res.json();
   sha = json.sha;
-  return b64decode(json.content);
+  return json.text;
 }
 
 async function apiWrite(text, message){
   const res = await fetch(API, {
     method:'PUT',
-    headers: { ...auth(), 'Content-Type':'application/json' },
-    body: JSON.stringify({ message, content: b64encode(text), sha, branch: REPO.branch })
+    headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
+    body: JSON.stringify({ text, sha, message })
   });
-  if (res.status === 409 || res.status === 422) throw new Error('conflict');
-  if (!res.ok) throw new Error(res.status === 401 ? 'トークンが無効です' : 'HTTP ' + res.status);
-  sha = (await res.json()).content.sha;
+  if (res.status === 409) throw new Error('conflict');
+  if (!res.ok) throw await fail(res);
+  sha = (await res.json()).sha;
 }
 
 // lines を書き換えたあとに呼ぶ。保存 → 再描画までまとめて面倒を見る
@@ -409,10 +404,10 @@ function renderDay(key, rel, tasks, isToday){
   if (!list.length) { sec.append(el('div','empty','—')); return sec; }
 
   for (const t of list) {
-    const card = el('div','task' + (t.done ? ' done' : '') + (token ? ' can-edit' : ''));
+    const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : ''));
 
     let box;
-    if (token) {
+    if (pin) {
       box = el('button','box');
       box.setAttribute('aria-label', (t.done ? '未完了に戻す: ' : '完了にする: ') + t.title);
       box.addEventListener('click', () => {
@@ -432,7 +427,7 @@ function renderDay(key, rel, tasks, isToday){
       meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
     }
     if (t.proj) meta.append(el('span','tag t-proj', t.proj));
-    if (token && !t.memo) {
+    if (pin && !t.memo) {
       const add = el('button','memo-add','＋メモ');
       add.addEventListener('click', () => openMemoEditor(card, t));
       meta.append(add);
@@ -441,7 +436,7 @@ function renderDay(key, rel, tasks, isToday){
 
     if (t.memo) {
       const memo = el('div','memo', t.memo);
-      if (token) memo.addEventListener('click', () => openMemoEditor(card, t));
+      if (pin) memo.addEventListener('click', () => openMemoEditor(card, t));
       card.append(memo);
     }
     sec.append(card);
@@ -477,8 +472,8 @@ function render(days){
 
 function showMode(){
   const n = document.getElementById('mode');
-  n.textContent = token ? '編集できます' : '読み取り専用';
-  n.classList.toggle('rw', !!token);
+  n.textContent = pin ? '編集できます' : '読み取り専用';
+  n.classList.toggle('rw', !!pin);
 }
 
 /* ---------- 読み込み ---------- */
@@ -486,7 +481,7 @@ function showMode(){
 async function load(){
   try {
     let text;
-    if (token) {
+    if (pin) {
       text = await apiRead();
     } else {
       const res = await fetch('tasks.txt?t=' + Date.now(), { cache:'no-store' });
@@ -503,57 +498,63 @@ async function load(){
   }
 }
 
-/* ---------- トークン ---------- */
+/* ---------- 暗証番号 ---------- */
 
-function loadToken(){
-  try { token = localStorage.getItem(TOKEN_KEY) || null; }
-  catch (e) { token = null; }
+const remember = v => { try { localStorage.setItem(PIN_KEY, v); return true; } catch (e) { return false; } };
+
+// URL の ?k= が最優先。端末の記憶が消えても、その URL で開けば編集できる。
+function loadPin(){
+  let fromUrl = null;
+  try { fromUrl = new URL(location.href).searchParams.get('k'); } catch (e) {}
+  if (fromUrl) { pin = fromUrl; remember(fromUrl); }
+  else {
+    try { pin = localStorage.getItem(PIN_KEY) || null; } catch (e) { pin = null; }
+  }
   showMode();
 }
 
 document.getElementById('gear').addEventListener('click', () => {
   const p = document.getElementById('panel');
   p.hidden = !p.hidden;
-  if (!p.hidden) document.getElementById('tok').value = '';
+  if (!p.hidden) document.getElementById('pin').value = '';
 });
 document.getElementById('panel-close').addEventListener('click', () => {
   document.getElementById('panel').hidden = true;
 });
-document.getElementById('tok-save').addEventListener('click', async () => {
-  const v = document.getElementById('tok').value.trim();
-  if (!v) { say('トークンが空です', true); return; }
-  const prev = token;
-  token = v;
+document.getElementById('pin-save').addEventListener('click', async () => {
+  const v = document.getElementById('pin').value.trim();
+  if (!v) { say('暗証番号が空です', true); return; }
+  const prev = pin;
+  pin = v;
   say('確認中…');
   try {
-    await apiRead();
-    try { localStorage.setItem(TOKEN_KEY, v); }
-    catch (e) { say('保存できませんでした（プライベートブラウズ？）', true); }
-    document.getElementById('tok').value = '';
+    await apiRead();                       // 通ったものだけ覚える
+    if (!remember(v)) say('この端末には覚えさせられませんでした', true);
+    document.getElementById('pin').value = '';
     document.getElementById('panel').hidden = true;
     showMode();
-    say('編集を有効にしました');
+    say('編集できます');
     await load();
   } catch (e) {
-    token = prev;
+    pin = prev;
     showMode();
     say(e.message, true);
   }
 });
-document.getElementById('tok-clear').addEventListener('click', async () => {
-  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
-  token = null; sha = null;
-  document.getElementById('tok').value = '';
+document.getElementById('pin-clear').addEventListener('click', async () => {
+  try { localStorage.removeItem(PIN_KEY); } catch (e) {}
+  pin = null; sha = null;
+  document.getElementById('pin').value = '';
   showMode();
   render(parse(lines.join('\n')));   // 読み込みを待たずに操作を止める
-  say('トークンを削除しました');
+  say('暗証番号を削除しました');
   await load();
 });
 
 document.getElementById('reload').addEventListener('click', () => { say(''); load(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing) load(); });
 
-loadToken();
+loadPin();
 load();
 </script>
 </body>

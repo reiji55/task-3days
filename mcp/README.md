@@ -1,10 +1,13 @@
 # task-3days MCP サーバー
 
-`tasks.txt` を読み書きする MCP サーバー。Claude / Cowork / Claude Desktop に
-**カスタムコネクタ**として繋ぐと、会話からタスクの状態を読んだり更新したりできる。
+`tasks.txt` を読み書きするサーバー。口が2つある。
 
-ビューア（`../index.html`）とは独立している。両方同時に使ってよい。
-どちらも同じ `tasks.txt` を GitHub Contents API 経由で読み書きするだけ。
+1. **MCP**（`/api/mcp/<合鍵>`）… Claude / Cowork / Claude Desktop に
+   **カスタムコネクタ**として繋ぐと、会話からタスクを読み書きできる
+2. **HTTP**（`/api/tasks`）… ビューア（`../index.html`）が叩く。暗証番号で守る
+
+**GITHUB_TOKEN はここにしか無い。** ブラウザにも会話にもリポジトリにも出ない。
+ビューアが持つのは短い暗証番号だけなので、端末から消えても入れ直しが軽い。
 
 ## ツール
 
@@ -42,7 +45,9 @@ add_tasks   date=明日 tasks=[...]            … 新しい分を足す
 ## 構成
 
 ```
-api/mcp/[key].js   Vercel Function。URL 末尾が合鍵
+api/mcp/[key].js   MCP の入口。URL 末尾が合鍵
+api/tasks.js       ビューアの入口。暗証番号で守る
+lib/tasks-api.js   /api/tasks の中身（CORS・認証・読み書き）
 lib/handler.js     合鍵の照合と MCP トランスポート（ステートレス）
 lib/server.js      ツールの定義
 lib/tasks.js       tasks.txt の解析と書き換え（純粋関数）
@@ -58,7 +63,9 @@ Vercel のプロジェクト設定で入れる。**コードにもリポジト�
 | 変数 | 必須 | 中身 |
 |---|---|---|
 | `GITHUB_TOKEN` | ○ | Fine-grained token。`task-3days` の Contents = Read and write |
-| `MCP_KEY` | ○ | 接続 URL の末尾に入る合鍵。長いランダム文字列 |
+| `MCP_KEY` | ○ | MCP の接続 URL の末尾に入る合鍵。長いランダム文字列 |
+| `EDIT_PIN` | ○ | ビューアの暗証番号。短い数字でよい |
+| `ALLOW_ORIGIN` | | ビューアのオリジン。既定 `https://reiji55.github.io` |
 | `GITHUB_OWNER` | | 既定 `reiji55` |
 | `GITHUB_REPO` | | 既定 `task-3days` |
 | `GITHUB_BRANCH` | | 既定 `main` |
@@ -116,8 +123,13 @@ npm test
 `test/tasks.test.mjs` は解析、`test/edit.test.mjs` は書き換えの純粋ロジック。
 `test/protocol.test.mjs` は本物の MCP クライアントを実際のプロトコルで喋らせ、
 GitHub だけ差し替えて通しで確認する。
+`test/http.test.mjs` は `/api/tasks` を実際の HTTP と fetch で叩き、
+認証・CORS・競合・入力検証を確かめる。
 
 ## 注意
 
-このリポジトリは public。**トークンと `MCP_KEY` は絶対にコミットしない。**
-どちらも Vercel の環境変数にだけ置く。
+このリポジトリは public。**トークン・`MCP_KEY`・`EDIT_PIN` は絶対にコミットしない。**
+すべて Vercel の環境変数にだけ置く。
+
+`EDIT_PIN` は短いので総当たりが効く。`/api/tasks` は外れるたびに待たせて
+速度を落としているが、それだけ。書き換えられて困るものは置かない。
