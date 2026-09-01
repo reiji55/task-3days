@@ -224,6 +224,7 @@ let pin = null;        // 端末に覚えさせた暗証番号。null なら読�
 let lines = [];        // tasks.txt の現在の中身を1行ずつ。編集はここを直接いじる
 let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替える
 let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
+let othersOpen = false; // 「その他の日」を開いているか。保存のたびに畳まないよう覚える
 let busy = null;       // 保存中の Promise。連打しても直列に流す
 
 /* ---------- tasks.txt の読み書き ---------- */
@@ -446,6 +447,7 @@ function renderDay(key, rel, tasks, isToday){
 
 function render(days){
   const app = document.getElementById('app');
+  const keepY = window.scrollY;   // 作り直すので、見ていた位置に戻す
   app.textContent = '';
   const now = new Date();
   const todayKey = ymd(now);
@@ -461,6 +463,8 @@ function render(days){
   const others = [...days.keys()].filter(k => !window3.some(w => w.key === k)).sort();
   if (others.length) {
     const det = el('details','other');
+    det.open = othersOpen;                                   // 開いていたら開いたまま
+    det.addEventListener('toggle', () => { othersOpen = det.open; });
     det.append(el('summary', null, `その他の日（${others.length}日分）`));
     for (const k of others) det.append(renderDay(k, '', days.get(k), false));
     app.append(det);
@@ -468,6 +472,8 @@ function render(days){
 
   document.getElementById('stamp').textContent =
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
+
+  if (keepY) window.scrollTo(0, keepY);
 }
 
 function showMode(){
