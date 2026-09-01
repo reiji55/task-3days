@@ -163,3 +163,24 @@ test('GET と PUT 以外は 405', async () => {
     }
   });
 });
+
+test('?check=1 でトークンの権限だけ見られる（ファイルには触らない）', async () => {
+  process.env.EDIT_PIN = PIN;
+  const f = fixture();
+  let readCalled = false;
+  f.io.readTasks = async () => { readCalled = true; return { text: ORIG, sha: 'x' }; };
+  f.io.checkAccess = async () => ({ repo: 'reiji55/task-3days', read: true, write: false, detail: '読めますが書けません' });
+
+  await withApi(f.io, async base => {
+    const r = await fetch(`${base}?check=1`, { headers: { 'X-Pin': PIN } });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.read, true);
+    assert.equal(j.write, false);
+    assert.match(j.detail, /書けません/);
+
+    assert.equal((await fetch(`${base}?check=1`)).status, 401, '暗証番号なしでは見せない');
+  });
+  assert.equal(readCalled, false, 'tasks.txt は読まない');
+  assert.equal(f.commits.length, 0);
+});

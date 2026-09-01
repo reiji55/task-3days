@@ -5,7 +5,7 @@
 // 消える／端末ごとに入れ直す、という問題がこれで無くなる。
 
 import { timingSafeEqual } from 'node:crypto';
-import { readTasks, writeTasks } from './github.js';
+import { readTasks, writeTasks, checkAccess } from './github.js';
 
 const MAX_BYTES = 200_000;   // tasks.txt は数KB。桁違いに大きいものは弾く
 
@@ -43,7 +43,7 @@ function bodyOf(req) {
   return b;
 }
 
-export function createTasksApi(io = { readTasks, writeTasks }, { sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+export function createTasksApi(io = { readTasks, writeTasks, checkAccess }, { sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
   return async function handler(req, res) {
     setCors(res);
 
@@ -64,6 +64,10 @@ export function createTasksApi(io = { readTasks, writeTasks }, { sleep = ms => n
 
     try {
       if (req.method === 'GET') {
+        // ?check=1 … トークンで何ができるかだけ見る。ファイルには触らない
+        if (url.searchParams.get('check')) {
+          return send(res, 200, await (io.checkAccess || checkAccess)());
+        }
         const { text, sha } = await io.readTasks();
         return send(res, 200, { text, sha });
       }

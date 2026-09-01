@@ -93,6 +93,21 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
   Root Directory が `mcp` でないか、Output Directory を明示していないか。
   API だけなら 404 のままでも動作には影響しない。
 
+### 権限を確かめる
+
+トークンで何ができるかだけを見る（`tasks.txt` には触らない）:
+
+```
+https://<プロジェクト名>.vercel.app/api/tasks?check=1&pin=<EDIT_PIN>
+```
+
+```json
+{ "repo": "reiji55/task-3days", "read": true, "write": false,
+  "detail": "読めますが書けません。Contents を Read and write に" }
+```
+
+`write: false` なら Fine-grained token の Contents が Read-only になっている。
+
 ### 接続先
 
 ```
