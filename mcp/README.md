@@ -45,6 +45,7 @@ add_tasks   date=明日 tasks=[...]            … 新しい分を足す
 ## 構成
 
 ```
+vercel.json        mcp/ に変更が無い push はビルドしない指定
 api/mcp/[key].js   MCP の入口。URL 末尾が合鍵
 api/tasks.js       ビューアの入口。暗証番号で守る
 lib/tasks-api.js   /api/tasks の中身（CORS・認証・読み書き）
@@ -79,6 +80,17 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
 環境変数を入れてから Deploy する。
 
 以降は **`main` への push で自動デプロイ**される。
+
+ただし `tasks.txt` はビューアから触るたびにコミットされるので、そのままだと
+中身に関係ない push でも毎回ビルドが走り、デプロイ回数を無駄に食う。
+`vercel.json` の `ignoreCommand` で **`mcp/` に変更が無い push は飛ばす**ようにしてある。
+
+```json
+{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . && exit 0 || exit 1" }
+```
+
+終了コード 0 で「ビルドしない」、1 で「ビルドする」。`.` は Root Directory
+（= `mcp`）を指す。`HEAD^` が無い（浅いクローン）ときは 1 に倒してビルドする。
 
 ### 詰まりやすいところ
 

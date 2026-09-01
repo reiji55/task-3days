@@ -90,6 +90,13 @@ h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
   margin-top:2px; display:grid; place-items:center; flex:none;
   padding:0; background:transparent; appearance:none;
 }
+.task.can-edit{grid-template-columns:auto 1fr auto}
+.del{
+  appearance:none;border:0;background:transparent;color:var(--ink-3);
+  font:inherit;font-size:15px;line-height:1;padding:2px 0 2px 8px;margin-top:1px;
+  cursor:pointer;flex:none;
+}
+.del:active{color:var(--warn)}
 button.box{cursor:pointer}
 button.box:active{transform:scale(.9)}
 .task.done .box{background:var(--ink-3);border-color:var(--ink-3)}
@@ -98,7 +105,7 @@ button.box:active{transform:scale(.9)}
 .title{font-size:15px;font-weight:500;line-height:1.45;word-break:break-word}
 .task.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px;font-weight:400}
 
-.meta{grid-column:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.meta{grid-column:2 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
 .tag{font-size:11px;line-height:1.5;padding:1px 8px;border-radius:999px;white-space:nowrap;font-weight:550}
 .tag.t-accel{color:var(--accel);background:var(--accel-bg)}
 .tag.t-routine{color:var(--routine);background:var(--routine-bg)}
@@ -112,13 +119,13 @@ button.box:active{transform:scale(.9)}
 .memo-add:active{opacity:.6}
 
 .memo{
-  grid-column:2; margin-top:8px; padding:7px 10px;
+  grid-column:2 / -1; margin-top:8px; padding:7px 10px;
   border-left:2px solid var(--line); background:var(--line-soft);
   border-radius:0 7px 7px 0;
   font-size:13px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word;
 }
 .can-edit .memo{cursor:text}
-.memo-edit{grid-column:2;margin-top:8px}
+.memo-edit{grid-column:2 / -1;margin-top:8px}
 .memo-edit textarea{
   display:block;width:100%;min-height:64px;resize:vertical;
   font:inherit;font-size:13px;line-height:1.6;color:var(--ink);
@@ -281,6 +288,11 @@ function writeDone(at, done){
   lines[at] = lines[at].replace(/^(\s*[-*]\s*\[)[ xX✓](\])/, (_, a, b) => a + (done ? 'x' : ' ') + b);
 }
 
+// タスク行とそのメモ行を消す。後ろから消さないと位置がずれる
+function writeRemove(task){
+  [task.at, ...task.memoAt].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+}
+
 // メモ行を丸ごと差し替える。1行につき memo: を1本、で往復できる
 function writeMemo(task, text){
   const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
@@ -420,6 +432,18 @@ function renderDay(key, rel, tasks, isToday){
       box = el('div','box');
     }
     card.append(box, el('div','title', t.title));
+
+    if (pin) {
+      const del = el('button','del','✕');
+      del.setAttribute('aria-label', '削除: ' + t.title);
+      del.addEventListener('click', () => {
+        if (!confirm(`「${t.title}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
+        card.classList.add('busy');
+        writeRemove(t);
+        save(`tasks: 削除（${t.title}）`);
+      });
+      card.append(del);
+    }
 
     const meta = el('div','meta');
     if (t.time) meta.append(el('span','tag t-time', t.time));
