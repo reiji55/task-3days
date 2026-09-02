@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parse, findTask, formatTask, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks
+  parse, findTask, formatTask, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks
 } from '../lib/tasks.js';
 
 const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
@@ -198,4 +198,103 @@ test('どの操作でもコメント行と全体の書式は残る', () => {
   assert.ok(text.startsWith('// 書き方は README.md を参照\n// - [ ] 時間帯'));
   assert.equal(count(text), 9);
   assert.deepEqual(titles(text), titles(ORIG));
+});
+
+/* ---------- 「いつでも」（日付に紐づかない置き場） ---------- */
+
+const WITH_ANY = ORIG + '\n# いつでも\n- [ ] 郵便を出す\n  memo: ついでにコンビニ\n- [x] 電池を買う\n';
+
+test('いつでも: 見出しを認識し、日付とは別に持つ', () => {
+  const { days } = parse(WITH_ANY);
+  assert.deepEqual([...days.keys()], ['2026-08-27', '2026-08-28', '2026-08-29', 'anytime']);
+  const list = days.get('anytime');
+  assert.deepEqual(list.map(t => t.id), ['anytime#1', 'anytime#2']);
+  assert.equal(list[0].memo, 'ついでにコンビニ');
+  assert.equal(list[1].done, true);
+});
+
+test('いつでも: 表記ゆれも拾う', () => {
+  for (const head of ['# いつでも', '#いつでも', '# anytime', '# INBOX']) {
+    const { days } = parse(`${head}\n- [ ] あ\n`);
+    assert.equal(days.get('anytime')?.length, 1, head);
+  }
+});
+
+test('いつでも: 日付として扱わない', () => {
+  const { days } = parse(WITH_ANY);
+  const s = snapshot(days, 'window', 'Asia/Tokyo', new Date('2026-08-28T03:00:00+09:00'));
+  assert.equal(s.days.length, 3, '窓はあくまで3日');
+  assert.equal(s.days.some(d => d.date === 'anytime'), false);
+  assert.equal(s.anytime.length, 2, 'いつでもは別枠で必ず返る');
+
+  const all = snapshot(days, 'all', 'Asia/Tokyo', new Date('2027-01-01T00:00:00+09:00'));
+  assert.deepEqual(all.days.map(d => d.date), ['2026-08-27', '2026-08-28', '2026-08-29']);
+  assert.equal(all.anytime.length, 2, 'scope=all でも別枠');
+});
+
+test('いつでも: 無ければ空で返る', () => {
+  const s = snapshot(parse(ORIG).days, 'window', 'Asia/Tokyo', new Date('2026-08-28T03:00:00+09:00'));
+  assert.deepEqual(s.anytime, []);
+});
+
+test('いつでも: 見出しごと作られ、末尾に付く', () => {
+  const r = addTasks(ORIG, 'anytime', [{ title: '郵便を出す', memo: 'ついで' }]);
+  assert.ok(r.text.includes('# いつでも'));
+  assert.ok(r.text.indexOf('# いつでも') > r.text.indexOf('# 2026-08-29'), '日付の後ろ');
+  assert.deepEqual(parse(r.text).days.get('anytime').map(t => t.title), ['郵便を出す']);
+  assert.equal(parse(r.text).days.get('anytime')[0].memo, 'ついで');
+});
+
+test('いつでも: 既にあれば末尾に足す', () => {
+  const r = addTasks(WITH_ANY, 'anytime', [{ title: '爪を切る' }]);
+  assert.deepEqual(parse(r.text).days.get('anytime').map(t => t.title),
+    ['郵便を出す', '電池を買う', '爪を切る']);
+  assert.equal((r.text.match(/# いつでも/g) || []).length, 1, '見出しは増えない');
+});
+
+test('いつでも: 新しい日付は「いつでも」より前に入る', () => {
+  const r = addTasks(WITH_ANY, '2026-09-05', [{ title: '来週' }]);
+  assert.ok(r.text.indexOf('# 2026-09-05') < r.text.indexOf('# いつでも'));
+  assert.equal(parse(r.text).days.get('anytime').length, 2, 'いつでもは無傷');
+});
+
+test('いつでも: チェック・メモ・削除が効く', () => {
+  let text = setDone(WITH_ANY, ['anytime#1'], true).text;
+  assert.match(text, /^- \[x\] 郵便を出す$/m);
+
+  text = setMemo(text, ['anytime#1'][0], '窓口は17時まで').text;
+  assert.ok(text.includes('memo: 窓口は17時まで'));
+  assert.ok(!text.includes('ついでにコンビニ'));
+
+  text = removeTasks(text, ['anytime#2']).text;
+  assert.deepEqual(parse(text).days.get('anytime').map(t => t.title), ['郵便を出す']);
+});
+
+test('いつでも: 日付との間を行き来できる', () => {
+  const toDay = moveTasks(WITH_ANY, ['anytime#1'], '2026-08-28');
+  let days = parse(toDay.text).days;
+  assert.equal(days.get('anytime').length, 1);
+  assert.equal(days.get('2026-08-28').length, 4);
+  assert.equal(days.get('2026-08-28').at(-1).memo, 'ついでにコンビニ', 'メモを持っていく');
+
+  const toAny = moveTasks(WITH_ANY, ['2026-08-29#1'], 'anytime');
+  days = parse(toAny.text).days;
+  assert.equal(days.get('2026-08-29').length, 2);
+  assert.deepEqual(days.get('anytime').map(t => t.title),
+    ['郵便を出す', '電池を買う', 'ヒューリック恵比寿解体']);
+});
+
+test('いつでも: 足して消せば元通り', () => {
+  const added = addTasks(ORIG, 'anytime', [{ title: '一時的' }]).text;
+  const back = removeTasks(added, ['anytime#1']).text;
+  // 見出しと空行は残る。タスクは消えている
+  assert.equal(parse(back).days.get('anytime').length, 0);
+  assert.ok(back.startsWith('// 書き方は README.md を参照'));
+  assert.deepEqual(titles(back), titles(ORIG));
+});
+
+test('いつでも: 壊れた id は弾く', () => {
+  const { days } = parse(ORIG);
+  assert.throws(() => findTask(days, 'anytime#1'), /その日付はありません/);
+  assert.throws(() => findTask(days, 'anytime'), /id の形式/);
 });

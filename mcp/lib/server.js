@@ -14,9 +14,11 @@ const TZ = process.env.TZ_NAME || 'Asia/Tokyo';
 const ok = value => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 1) }] });
 const ng = err => ({ isError: true, content: [{ type: 'text', text: String(err.message || err) }] });
 
-const ID = z.string().describe('get_tasks が返した id。例 "2026-08-28#2"');
+const ID = z.string().describe('get_tasks が返した id。例 "2026-08-28#2" / "anytime#1"');
 const IDS = z.array(z.string()).min(1).describe('id の配列。1件でも配列で渡す');
-const DATE = z.string().describe('YYYY-MM-DD。例 "2026-08-29"');
+const DATE = z.string().describe(
+  'YYYY-MM-DD。例 "2026-08-29"。' +
+  '日付を決めずに置いておくものは "anytime"（ファイル上の「# いつでも」）');
 
 const TASK_INPUT = z.object({
   title: z.string().describe('タスク名。必須'),
@@ -54,6 +56,7 @@ export function createServer(io = { readTasks, writeTasks }) {
     title: 'タスクを読む',
     description:
       'タスク一覧を返す。既定は昨日・今日・明日の3日分。' +
+      '日付に紐づかない「いつでも」の分は、scope に関わらず anytime として必ず返る。' +
       '返ってくる id を他のツールに渡す。書き換える前に必ずこれを呼ぶ。',
     inputSchema: {
       scope: z.enum(['window', 'all']).optional()
@@ -98,6 +101,7 @@ export function createServer(io = { readTasks, writeTasks }) {
     title: 'タスクを足す',
     description:
       '指定した日付にタスクを追加する。日付の見出しがなければ作る。' +
+      'date に "anytime" を渡すと「いつでも」に入る（いつやるか決めていないもの）。' +
       'replace=true にするとその日の既存タスクを全部置き換える（朝の入れ替え用）。' +
       '同じ内容を二重に足さないよう、先に get_tasks で確認すること。',
     inputSchema: {
@@ -132,7 +136,8 @@ export function createServer(io = { readTasks, writeTasks }) {
     title: 'タスクを別の日へ移す',
     description:
       'タスクを別の日付へ移す（繰り越し）。チェック・メモ・各欄はそのまま持っていく。' +
-      '終わらなかった今日の分を明日へ送るときに使う。',
+      '終わらなかった今日の分を明日へ送るときや、' +
+      '「いつでも」（date="anytime"）と特定の日付の間を行き来させるときに使う。',
     inputSchema: {
       ids: IDS,
       date: DATE,

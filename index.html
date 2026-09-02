@@ -180,6 +180,26 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 #panel button:active{opacity:.6}
 #panel .warn{color:var(--warn)}
 #panel a{color:inherit}
+
+#quick{display:flex;gap:7px;margin:0 0 18px}
+#quick[hidden]{display:none}
+#quick input{
+  flex:1;min-width:0;font:inherit;font-size:14px;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  padding:9px 12px;box-shadow:var(--shadow);
+}
+#quick input::placeholder{color:var(--ink-3)}
+#quick input:focus{outline:none;border-color:var(--ink-3)}
+#quick button{
+  appearance:none;font:inherit;font-size:16px;line-height:1;font-weight:600;
+  width:42px;flex:none;border-radius:11px;cursor:pointer;
+  border:1px solid var(--ink);background:var(--ink);color:var(--bg);
+}
+#quick button:active{opacity:.6}
+.day.is-anytime .day-rel{
+  color:var(--ink-2); background:var(--line-soft); border-radius:999px;
+  padding:1px 7px;
+}
 </style>
 </head>
 <body>
@@ -212,8 +232,15 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
     </p>
   </section>
 
+  <form id="quick" hidden>
+    <input id="quick-text" type="text" enterkeyhint="done" autocomplete="off"
+           autocapitalize="off" spellcheck="false"
+           placeholder="すぐできること…（日付なし）">
+    <button type="submit" aria-label="追加">＋</button>
+  </form>
+
   <main id="app"><div class="empty">読み込み中…</div></main>
-  <p class="note">タスクは <code>tasks.txt</code> に保存されます。<br>チェックとメモはこの画面から、行の追加や削除は Claude に。</p>
+  <p class="note">タスクは <code>tasks.txt</code> に保存されます。<br>日付付きの入れ替えは Claude に。</p>
 </div>
 
 <script>
@@ -221,6 +248,11 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 // ここには来ない。この画面が持つのは暗証番号だけ。
 const API = 'https://task-3days-mcp-server.vercel.app/api/tasks';
 const PIN_KEY = 'task3days.pin';
+
+// 日付に紐づかない置き場。mcp/lib/tasks.js と同じ約束にしてある
+const ANYTIME = 'anytime';
+const ANYTIME_HEADER = '# いつでも';
+const ANYTIME_RE = /^#\s*(いつでも|anytime|inbox)\s*$/i;
 
 const TYPE_MAP = {
   '前進':'accel','前進型':'accel','ぜんしん':'accel','A':'accel',
@@ -233,11 +265,13 @@ let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替�
 let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
 let othersOpen = false; // 「その他の日」を開いているか。保存のたびに畳まないよう覚える
 let busy = null;       // 保存中の Promise。連打しても直列に流す
+let headers = new Map(); // 見出しが何行目にあるか。追加するときの差し込み先
 
 /* ---------- tasks.txt の読み書き ---------- */
 
 function parse(text){
   lines = text.split(/\r?\n/);
+  headers = new Map();
   const days = new Map();
   let curDate = null, curTask = null;
   lines.forEach((raw, i) => {
@@ -246,9 +280,11 @@ function parse(text){
     if (line.startsWith('//')) return;
 
     const d = line.match(/^#\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-    if (d) {
-      curDate = `${d[1]}-${String(d[2]).padStart(2,'0')}-${String(d[3]).padStart(2,'0')}`;
-      if (!days.has(curDate)) days.set(curDate, []);
+    if (d || ANYTIME_RE.test(line)) {
+      curDate = d
+        ? `${d[1]}-${String(d[2]).padStart(2,'0')}-${String(d[3]).padStart(2,'0')}`
+        : ANYTIME;
+      if (!days.has(curDate)) { days.set(curDate, []); headers.set(curDate, i); }
       curTask = null;
       return;
     }
@@ -291,6 +327,22 @@ function writeDone(at, done){
 // タスク行とそのメモ行を消す。後ろから消さないと位置がずれる
 function writeRemove(task){
   [task.at, ...task.memoAt].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+}
+
+// 「いつでも」の末尾にタスクを1本足す。見出しが無ければファイルの末尾に作る。
+// title に | が入っていると列の区切りに見えるので、その場合だけ空欄を明示する
+function writeAdd(title){
+  const days = parse(lines.join('\n'));      // lines と headers を作り直す
+  const row = title.includes('|') ? `- [ ] - | - | - | ${title}` : `- [ ] ${title}`;
+  const list = days.get(ANYTIME) || [];
+  if (headers.has(ANYTIME)) {
+    const last = list.at(-1);
+    const at = last ? Math.max(last.at, ...last.memoAt) + 1 : headers.get(ANYTIME) + 1;
+    lines.splice(at, 0, row);
+  } else {
+    while (lines.length && lines.at(-1).trim() === '') lines.pop();
+    lines.push('', ANYTIME_HEADER, row, '');
+  }
 }
 
 // メモ行を丸ごと差し替える。1行につき memo: を1本、で往復できる
@@ -366,6 +418,7 @@ function ymd(dt){
   return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
 }
 function label(key){
+  if (key === ANYTIME) return 'いつでも';
   const [y,m,d] = key.split('-').map(Number);
   const dow = ['日','月','火','水','木','金','土'][new Date(y, m-1, d).getDay()];
   return `${m}月${d}日（${dow}）`;
@@ -407,7 +460,7 @@ function openMemoEditor(card, task){
 }
 
 function renderDay(key, rel, tasks, isToday){
-  const sec = el('section', 'day' + (isToday ? ' is-today' : ''));
+  const sec = el('section', 'day' + (isToday ? ' is-today' : '') + (key === ANYTIME ? ' is-anytime' : ''));
   const head = el('div','day-head');
   head.append(el('span','day-date', label(key)), el('span','day-rel', rel));
   const list = tasks || [];
@@ -484,7 +537,12 @@ function render(days){
     app.append(renderDay(w.key, w.rel, days.get(w.key), w.key === todayKey));
   }
 
-  const others = [...days.keys()].filter(k => !window3.some(w => w.key === k)).sort();
+  // 「いつでも」は日付の窓の外だが、畳まない。忘れないための置き場なので常に見える
+  const anytime = days.get(ANYTIME);
+  if (anytime && anytime.length) app.append(renderDay(ANYTIME, '日付なし', anytime, false));
+
+  const others = [...days.keys()]
+    .filter(k => k !== ANYTIME && !window3.some(w => w.key === k)).sort();
   if (others.length) {
     const det = el('details','other');
     det.open = othersOpen;                                   // 開いていたら開いたまま
@@ -504,6 +562,7 @@ function showMode(){
   const n = document.getElementById('mode');
   n.textContent = pin ? '編集できます' : '読み取り専用';
   n.classList.toggle('rw', !!pin);
+  document.getElementById('quick').hidden = !pin;
 }
 
 /* ---------- 読み込み ---------- */
@@ -579,6 +638,17 @@ document.getElementById('pin-clear').addEventListener('click', async () => {
   render(parse(lines.join('\n')));   // 読み込みを待たずに操作を止める
   say('暗証番号を削除しました');
   await load();
+});
+
+document.getElementById('quick').addEventListener('submit', e => {
+  e.preventDefault();
+  const box = document.getElementById('quick-text');
+  const title = box.value.trim();
+  if (!title) return;
+  box.value = '';
+  box.blur();                    // iOS のキーボードを閉じる
+  writeAdd(title);
+  save(`tasks: 追加（${title}）`);
 });
 
 document.getElementById('reload').addEventListener('click', () => { say(''); load(); });

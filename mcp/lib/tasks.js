@@ -9,6 +9,12 @@ const TYPES = {
 
 const clean = s => (!s || s === '-' || s === 'ー' || s === '—') ? '' : s;
 
+// 日付に紐づかない置き場。「すぐできるが、いつやるとは決めていない」もの。
+// ファイル上は「# いつでも」という見出しで、3日の窓から外れても畳まれない。
+export const ANYTIME = 'anytime';
+const ANYTIME_HEADER = '# いつでも';
+const ANYTIME_RE = /^#\s*(いつでも|anytime|inbox)\s*$/i;
+
 /**
  * @returns {{ lines: string[], days: Map<string, object[]>, headers: Map<string, number> }}
  *   task: { id, date, index, done, time, type, kind, proj, title, memo, at, memoAt }
@@ -27,8 +33,10 @@ export function parse(text) {
     if (!line || line.startsWith('//')) return;
 
     const d = line.match(/^#\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-    if (d) {
-      curDate = `${d[1]}-${String(d[2]).padStart(2, '0')}-${String(d[3]).padStart(2, '0')}`;
+    if (d || ANYTIME_RE.test(line)) {
+      curDate = d
+        ? `${d[1]}-${String(d[2]).padStart(2, '0')}-${String(d[3]).padStart(2, '0')}`
+        : ANYTIME;
       if (!days.has(curDate)) { days.set(curDate, []); headers.set(curDate, i); }
       curTask = null;
       return;
@@ -128,8 +136,8 @@ export function windowKeys(tz = 'Asia/Tokyo', now = new Date()) {
 
 /** id（"2026-08-28#2"）からタスクを引く。 */
 export function findTask(days, id) {
-  const m = String(id).match(/^(\d{4}-\d{2}-\d{2})#(\d+)$/);
-  if (!m) throw new Error(`id の形式が違います: ${id}（例: 2026-08-28#2）`);
+  const m = String(id).match(/^(\d{4}-\d{2}-\d{2}|anytime)#(\d+)$/);
+  if (!m) throw new Error(`id の形式が違います: ${id}（例: 2026-08-28#2 / anytime#1）`);
   const list = days.get(m[1]);
   if (!list) throw new Error(`その日付はありません: ${m[1]}`);
   const task = list[Number(m[2]) - 1];
@@ -144,16 +152,20 @@ const view = t => ({
 
 /** MCP が返す形。scope="window" なら3日分、"all" なら全部。 */
 export function snapshot(days, scope = 'window', tz = 'Asia/Tokyo', now = new Date()) {
+  // 「いつでも」は日付ではないので、どの scope でも同じように別枠で返す
+  const anytime = (days.get(ANYTIME) || []).map(view);
   if (scope === 'all') {
     return {
       today: todayKey(tz, now),
-      days: [...days.keys()].sort().map(date => ({
+      anytime,
+      days: [...days.keys()].filter(k => k !== ANYTIME).sort().map(date => ({
         date, rel: null, tasks: days.get(date).map(view)
       }))
     };
   }
   return {
     today: todayKey(tz, now),
+    anytime,
     days: windowKeys(tz, now).map(({ date, rel }) => ({
       date, rel, tasks: (days.get(date) || []).map(view)
     }))
@@ -164,7 +176,10 @@ export function snapshot(days, scope = 'window', tz = 'Asia/Tokyo', now = new Da
    どれも「読む → 該当箇所だけ直す → 返す」。呼び出し側は結果を丸ごと保存する。 */
 
 const assertDate = d => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d))) throw new Error(`日付の形式が違います: ${d}（例: 2026-08-28）`);
+  if (String(d) === ANYTIME) return ANYTIME;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d))) {
+    throw new Error(`日付の形式が違います: ${d}（例: 2026-08-28 / いつでもは "anytime"）`);
+  }
   return d;
 };
 
@@ -273,12 +288,17 @@ export function addTasks(text, date, items, { position = 'end', replace = false 
     lines.splice(at, 0, ...block);
   } else {
     // 日付順に並んでいるファイルなら、その位置に差し込む。でなければ末尾。
-    const later = [...headers.entries()].filter(([d]) => d > date).sort((a, b) => a[1] - b[1])[0];
+    // 「いつでも」は日付ではないので必ず末尾。逆に、新しい日付は
+    // 「いつでも」より前に入る（'anytime' は文字列比較でどの日付より後になる）。
+    const header = date === ANYTIME ? ANYTIME_HEADER : `# ${date}`;
+    const later = date === ANYTIME
+      ? undefined
+      : [...headers.entries()].filter(([d]) => d > date).sort((a, b) => a[1] - b[1])[0];
     if (later) {
-      lines.splice(later[1], 0, `# ${date}`, ...block, '');
+      lines.splice(later[1], 0, header, ...block, '');
     } else {
       while (lines.length && lines.at(-1).trim() === '') lines.pop();
-      lines.push('', `# ${date}`, ...block, '');
+      lines.push('', header, ...block, '');
     }
   }
   return { text: lines.join('\n'), date, added: list.map(t => t.title), replaced: replace };
