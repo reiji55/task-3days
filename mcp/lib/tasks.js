@@ -172,6 +172,42 @@ export function snapshot(days, scope = 'window', tz = 'Asia/Tokyo', now = new Da
   };
 }
 
+/**
+ * 中身が空になった過去の日付の見出しを、節ごと落とす。
+ * タスクを全部消した日の見出しだけが残り、「その他の日」に空の欄として
+ * 出続けるのを防ぐ。保存のついでに掃除する用で、単独では呼ばない。
+ *
+ * 触らないもの:
+ *   - 3日の窓（昨日・今日・明日）… 空でも枠として要る
+ *   - 今日以降の日付       … これから入れる場所
+ *   - 「いつでも」          … 日付ではない
+ *   - 空行以外が残っている節 … コメントなどを巻き込まない
+ */
+export function pruneEmptyDays(text, tz = 'Asia/Tokyo', now = new Date()) {
+  const { lines, days, headers } = parse(text);
+  const today = todayKey(tz, now);
+  const win = new Set(windowKeys(tz, now).map(w => w.date));
+  const marks = [...headers.entries()].sort((a, b) => a[1] - b[1]);
+
+  const pruned = [];
+  const cut = [];
+  marks.forEach(([date, at], k) => {
+    if (date === ANYTIME || win.has(date) || date >= today) return;
+    if ((days.get(date) || []).length) return;
+    const end = k + 1 < marks.length ? marks[k + 1][1] : lines.length;
+    for (let i = at + 1; i < end; i++) if (lines[i].trim()) return;
+    for (let i = at; i < end; i++) cut.push(i);
+    pruned.push(date);
+  });
+  if (!cut.length) return { text, pruned };
+
+  cut.sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+  // 末尾に空行が並ぶことがあるので1本に詰め、改行で終わらせる
+  while (lines.length > 1 && !lines.at(-1).trim() && !lines.at(-2).trim()) lines.pop();
+  if (lines.length && lines.at(-1) !== '') lines.push('');
+  return { text: lines.join('\n'), pruned };
+}
+
 /* ---------- 書き換え（text を受け取って text を返す） ----------
    どれも「読む → 該当箇所だけ直す → 返す」。呼び出し側は結果を丸ごと保存する。 */
 

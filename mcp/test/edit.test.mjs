@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parse, findTask, formatTask, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks
+  parse, findTask, formatTask, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks,
+  pruneEmptyDays
 } from '../lib/tasks.js';
 
 const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
@@ -297,4 +298,86 @@ test('いつでも: 壊れた id は弾く', () => {
   const { days } = parse(ORIG);
   assert.throws(() => findTask(days, 'anytime#1'), /その日付はありません/);
   assert.throws(() => findTask(days, 'anytime'), /id の形式/);
+});
+
+/* ---------- 空になった過去の日付を片付ける ---------- */
+
+// 2026-09-05 を「今日」に固定する。窓は 9/4・9/5・9/6。
+const NOW = new Date('2026-09-05T10:00:00+09:00');
+const prune = text => pruneEmptyDays(text, 'Asia/Tokyo', NOW);
+const heads = text => [...parse(text).headers.keys()];
+
+test('prune: 中身の無い過去の見出しは節ごと消える', () => {
+  const src = '# 2026-08-27\n\n# 2026-08-28\n\n# 2026-09-05\n- [ ] 今日の分\n';
+  const { text, pruned } = prune(src);
+  assert.deepEqual(pruned, ['2026-08-27', '2026-08-28']);
+  assert.equal(text, '# 2026-09-05\n- [ ] 今日の分\n');
+});
+
+test('prune: 中身のある過去の日は残る', () => {
+  const src = '# 2026-08-27\n- [x] 済んだやつ\n\n# 2026-08-28\n\n';
+  const { text, pruned } = prune(src);
+  assert.deepEqual(pruned, ['2026-08-28']);
+  assert.ok(text.includes('# 2026-08-27'));
+  assert.ok(text.includes('済んだやつ'));
+});
+
+test('prune: 3日の窓の中は空でも残す（枠として要る）', () => {
+  const src = '# 2026-09-04\n\n# 2026-09-05\n\n# 2026-09-06\n\n';
+  assert.deepEqual(prune(src).pruned, []);
+  assert.equal(prune(src).text, src);
+});
+
+test('prune: 未来の空の日付は残す（これから入れる場所）', () => {
+  const src = '# 2026-09-20\n\n# 2026-10-01\n\n';
+  assert.deepEqual(prune(src).pruned, []);
+});
+
+test('prune: 「いつでも」は空でも消さない', () => {
+  const src = '# いつでも\n\n# 2026-08-01\n\n';
+  const { text, pruned } = prune(src);
+  assert.deepEqual(pruned, ['2026-08-01']);
+  assert.ok(text.includes('# いつでも'));
+});
+
+test('prune: 空行以外が残っている節は巻き込まない', () => {
+  const src = '# 2026-08-27\n// あとで書く\n\n# 2026-08-28\n\n';
+  const { text, pruned } = prune(src);
+  assert.deepEqual(pruned, ['2026-08-28']);
+  assert.ok(text.includes('# 2026-08-27'));
+  assert.ok(text.includes('// あとで書く'));
+});
+
+test('prune: 先頭のコメント帯と、消えない日の中身は無傷', () => {
+  const { text, pruned } = prune(ORIG);
+  assert.deepEqual(pruned, []);                       // fixture に空の日は無い
+  assert.equal(text, ORIG);
+});
+
+test('prune: 消したあとに空行が溜まらない', () => {
+  const src = '// 見出しより上は触らない\n\n# 2026-08-27\n\n\n\n# 2026-08-28\n\n\n';
+  const { text } = prune(src);
+  assert.equal(text, '// 見出しより上は触らない\n');
+  assert.ok(!/\n\n\n/.test(text));
+
+  // 全部消えて何も残らなければ空になる
+  assert.equal(prune('# 2026-08-27\n\n\n').text, '');
+});
+
+test('prune: 最後のタスクを消した過去の日は、見出しごと消える', () => {
+  const src = '# 2026-08-27\n- [ ] 消す予定\n\n# 2026-09-05\n- [ ] 今日の分\n';
+  const id = parse(src).days.get('2026-08-27')[0].id;
+  const cut = removeTasks(src, [id]).text;
+  assert.ok(heads(cut).includes('2026-08-27'), '消した直後は見出しが残っている');
+  const { text, pruned } = prune(cut);
+  assert.deepEqual(pruned, ['2026-08-27']);
+  assert.deepEqual(heads(text), ['2026-09-05']);
+  assert.ok(text.includes('今日の分'));
+});
+
+test('prune: 何度かけても結果は同じ', () => {
+  const src = '# 2026-08-27\n\n# 2026-09-05\n- [ ] 今日の分\n';
+  const once = prune(src).text;
+  assert.equal(prune(once).text, once);
+  assert.deepEqual(prune(once).pruned, []);
 });

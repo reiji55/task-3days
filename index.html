@@ -345,6 +345,32 @@ function writeAdd(title){
   }
 }
 
+// 中身が空になった過去の日付の見出しを、節ごと落とす。タスクを全部消した日の
+// 見出しだけが残って「その他の日」に空の欄として出続けるのを防ぐ。
+// 3日の窓・今日以降・「いつでも」・空行以外が残っている節には触らない。
+function pruneEmptyPast(){
+  const days = parse(lines.join('\n'));      // lines と headers を作り直す
+  const now = new Date();
+  const today = ymd(now);
+  const win = new Set([-1, 0, 1].map(off =>
+    ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + off))));
+  const marks = [...headers.entries()].sort((a, b) => a[1] - b[1]);
+
+  const cut = [];
+  marks.forEach(([key, at], k) => {
+    if (key === ANYTIME || win.has(key) || key >= today) return;
+    if ((days.get(key) || []).length) return;
+    const end = k + 1 < marks.length ? marks[k + 1][1] : lines.length;
+    for (let i = at + 1; i < end; i++) if (lines[i].trim()) return;
+    for (let i = at; i < end; i++) cut.push(i);
+  });
+  if (!cut.length) return;
+
+  cut.sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+  while (lines.length > 1 && !lines.at(-1).trim() && !lines.at(-2).trim()) lines.pop();
+  if (lines.length && lines.at(-1) !== '') lines.push('');
+}
+
 // メモ行を丸ごと差し替える。1行につき memo: を1本、で往復できる
 function writeMemo(task, text){
   const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
@@ -393,6 +419,7 @@ async function apiWrite(text, message){
 function save(message){
   const run = async () => {
     say('保存中…');
+    pruneEmptyPast();          // 空になった過去の日付は、この保存に相乗りさせて片付ける
     const text = lines.join('\n');
     try {
       await apiWrite(text, message);
@@ -541,8 +568,11 @@ function render(days){
   const anytime = days.get(ANYTIME);
   if (anytime && anytime.length) app.append(renderDay(ANYTIME, '日付なし', anytime, false));
 
+  // 空のまま残った過去の日付は出さない（次の保存でファイルからも消える）
   const others = [...days.keys()]
-    .filter(k => k !== ANYTIME && !window3.some(w => w.key === k)).sort();
+    .filter(k => k !== ANYTIME && !window3.some(w => w.key === k))
+    .filter(k => days.get(k).length || k > todayKey)
+    .sort();
   if (others.length) {
     const det = el('details','other');
     det.open = othersOpen;                                   // 開いていたら開いたまま

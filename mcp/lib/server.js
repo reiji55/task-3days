@@ -5,7 +5,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
-  parse, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks
+  parse, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks,
+  pruneEmptyDays
 } from './tasks.js';
 import { readTasks, writeTasks } from './github.js';
 
@@ -45,7 +46,10 @@ export function createServer(io = { readTasks, writeTasks }) {
     try {
       const { text, sha } = await io.readTasks();
       const out = fn(text, args);
-      const { text: next, ...report } = out;
+      const { text: edited, ...report } = out;
+      // 空になった過去の日付の見出しは、この保存に相乗りさせて片付ける
+      const { text: next, pruned } = pruneEmptyDays(edited, TZ);
+      if (pruned.length) report.pruned = pruned;
       if (next === text) return ok({ ...report, changed: false, note: '変更ありません' });
       await io.writeTasks(next, sha, message(out, args));
       return ok({ ...report, changed: true });
