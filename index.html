@@ -7,6 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
+<!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
+<meta name="app-version" content="2026-09-07-week">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -885,6 +887,34 @@ function renderWeek(){
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
 }
 
+/* ---------- 自分が古くなっていないか見る ----------
+   ホーム画面のアプリは index.html を強く握るので、こちらを直しても
+   端末には古いまま残る。version.txt だけは毎回取りに行って、
+   食い違ったら URL を変えて読み直す（キャッシュを外すため）。 */
+
+const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+const SEEN_KEY = 'task3days.seen';
+
+async function checkVersion(){
+  let latest = '';
+  try {
+    const res = await fetch(`version.txt?t=${Date.now()}`, { cache:'no-store' });
+    if (!res.ok) return;
+    latest = (await res.text()).trim();
+  } catch (e) { return; }                       // 圏外などは黙って諦める
+  if (!latest || !APP_VERSION || latest === APP_VERSION) return;
+
+  // 読み直しても古いままなら、それ以上は繰り返さない
+  let seen = null;
+  try { seen = sessionStorage.getItem(SEEN_KEY); } catch (e) {}
+  if (seen === latest) { say('新しい版があります。閉じて開き直してください', true); return; }
+  try { sessionStorage.setItem(SEEN_KEY, latest); } catch (e) {}
+
+  const u = new URL(location.href);
+  u.searchParams.set('r', latest);              // URL が変われば取り直しになる
+  location.replace(u.toString());
+}
+
 async function loadWeek(){
   weekErr = '';
   try {
@@ -1015,6 +1045,7 @@ document.getElementById('reload').addEventListener('click', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || editing) return;
+  checkVersion();                    // 開き直したときに、古ければ自分で入れ替わる
   view === 'week' ? loadWeek() : load();
 });
 
@@ -1030,6 +1061,7 @@ function loadView(){
 loadView();
 loadPin();          // showMode → applyView まで走るので、週なら week.json も読む
 load();
+checkVersion();
 </script>
 </body>
 </html>
