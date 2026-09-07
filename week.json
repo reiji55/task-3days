@@ -3,10 +3,7 @@
   "updated": "2026-09-07T17:30:00+09:00",
   "start_hour": 5,
   "end_hour": 26,
-  "dim": [
-    "睡眠",
-    "生活時間"
-  ],
+  "dim": [],
   "events": [
     {
       "summary": "睡眠",
