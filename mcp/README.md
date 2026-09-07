@@ -1,6 +1,6 @@
 # task-3days MCP サーバー
 
-`tasks.txt` を読み書きするサーバー。口が2つある。
+`tasks.txt`（作業台）と `week.json`（週の時間割）を読み書きするサーバー。口が2つある。
 
 1. **MCP**（`/api/mcp/<合鍵>`）… Claude / Cowork / Claude Desktop に
    **カスタムコネクタ**として繋ぐと、会話からタスクを読み書きできる
@@ -20,6 +20,8 @@
 | `update_task` | 時間帯・型・プロジェクト・タスク名を直す。渡さなかった欄はそのまま |
 | `move_tasks` | 別の日へ移す（繰り越し）。`"anytime"` との出し入れも同じ。チェックもメモも持っていく |
 | `remove_tasks` | 消す。メモの行も一緒に消える |
+| `get_week` | 週の時間割（`week.json`）を日ごとにまとめて返す |
+| `set_week` | 週の時間割を丸ごと差し替える。毎週月曜の朝に呼ぶ |
 
 タスクは `get_tasks` が返す `id`（`"2026-08-28#2"` = 日付 + その日の何番目か）で指す。
 番号は読むたびに振り直されるので、**書き換える前に必ず `get_tasks` を呼ぶ。**
@@ -62,6 +64,30 @@ add_tasks   date=明日 tasks=[...]            … 新しい分を足す
 
 `add_tasks` に `replace: true` を付けると、その日の既存タスクを消してから入れる。
 
+### 週の時間割（`week.json`）
+
+ビューアの「週」タブが読む、**Google カレンダーの写し**。見るだけの資料で、
+ここを書き換えてもカレンダーは変わらない。予定を直すならカレンダー側を直して
+`set_week` で写しを取り直す。
+
+中身の形は **weekplan スキルの `events.json` と同じ**にしてある。同じ JSON から
+印刷用のPDFもスマホの画面も作れる。
+
+```
+get_week                                     … 今の写しと、何週前かを見る
+set_week  week="2026-09-07" events=[...]     … 1週間分を丸ごと入れ替える
+```
+
+- `week` は週内のどの日付でもよい。**月曜に丸める**
+- 追記ではなく**全部入れ替え**。渡さなかった予定は消える
+- 週の範囲外の予定は捨てる（`dropped` で件数を返す）
+- 深夜またぎはそのまま渡してよい。画面側で日ごとに切り分ける
+- `dim` に入れた語を含む予定は薄く出る。既定は `["睡眠","生活時間"]`
+- 色は名前（`｜` や `／` の前）ごとに自動で振る。指定したいときだけ `color`
+- **中身が同じなら書かない。** 見に行っただけでコミットは増えない
+
+毎週月曜の朝に Routine が走り、カレンダーを読んで `set_week` を呼ぶ。
+
 ## 構成
 
 ```
@@ -72,6 +98,7 @@ lib/tasks-api.js   /api/tasks の中身（CORS・認証・読み書き）
 lib/handler.js     合鍵の照合と MCP トランスポート（ステートレス）
 lib/server.js      ツールの定義
 lib/tasks.js       tasks.txt の解析と書き換え（純粋関数）
+lib/week.js        week.json の組み立てと検証（純粋関数）
 lib/github.js      GitHub Contents API
 public/index.html  / に置く案内ページ。動作には無関係
 test/              node --test で全部走る
@@ -91,6 +118,7 @@ Vercel のプロジェクト設定で入れる。**コードにもリポジト�
 | `GITHUB_REPO` | | 既定 `task-3days` |
 | `GITHUB_BRANCH` | | 既定 `main` |
 | `TASKS_PATH` | | 既定 `tasks.txt` |
+| `WEEK_PATH` | | 既定 `week.json` |
 | `TZ_NAME` | | 既定 `Asia/Tokyo`。「今日」の判定に使う |
 
 ## デプロイ
@@ -103,14 +131,14 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
 
 ただし `tasks.txt` はビューアから触るたびにコミットされるので、そのままだと
 中身に関係ない push でも毎回ビルドが走り、デプロイ回数を無駄に食う。
-`vercel.json` の `ignoreCommand` で **タスクの保存だけを飛ばす**ようにしてある。
+`vercel.json` の `ignoreCommand` で **データの保存だけを飛ばす**ようにしてある。
 
 ```json
-{ "ignoreCommand": "git log -1 --pretty=%s | grep -q '^tasks:' && exit 0 || exit 1" }
+{ "ignoreCommand": "git log -1 --pretty=%s | grep -qE '^(tasks|week):' && exit 0 || exit 1" }
 ```
 
 終了コード 0 で「ビルドしない」、1 で「ビルドする」。
-ビューアと MCP からの保存は必ず `tasks: …` というメッセージになるので、
+ビューアと MCP からの保存は必ず `tasks: …` か `week: …` というメッセージになるので、
 **それだけを名指しで飛ばす**。判定に使うのは HEAD 1本だけ。
 
 以前は `git diff --quiet HEAD^ HEAD -- .`（`mcp/` に差分が無ければ飛ばす）
@@ -119,7 +147,7 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
 コードは main に載っているのにデプロイされない、という状態になる。
 実際に「いつでも」の対応がこれで一度デプロイ漏れした。
 
-残る穴はひとつ。**push のいちばん先のコミットが `tasks:` で、同じ push に
+残る穴はひとつ。**push のいちばん先のコミットが `tasks:` / `week:` で、同じ push に
 `mcp/` の変更が混ざっている**場合は飛ばされる。`mcp/` を直したら自分のコミットを
 最後にしておけばよい（普通にそうなる）。
 
@@ -183,6 +211,7 @@ npm test
 GitHub だけ差し替えて通しで確認する。
 `test/http.test.mjs` は `/api/tasks` を実際の HTTP と fetch で叩き、
 認証・CORS・競合・入力検証を確かめる。
+`test/week.test.mjs` は `week.json` の組み立てと検証。
 
 ## 注意
 

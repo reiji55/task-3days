@@ -8,7 +8,8 @@ import {
   parse, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks,
   pruneEmptyDays
 } from './tasks.js';
-import { readTasks, writeTasks } from './github.js';
+import { buildWeek, sameContent, summary as weekSummary } from './week.js';
+import { readTasks, writeTasks, readWeek, writeWeek } from './github.js';
 
 const TZ = process.env.TZ_NAME || 'Asia/Tokyo';
 
@@ -30,13 +31,18 @@ const TASK_INPUT = z.object({
   done: z.boolean().optional().describe('最初から完了扱いにする場合のみ true')
 });
 
-export function createServer(io = { readTasks, writeTasks }) {
+export function createServer(io = {}) {
+  // 既定は GitHub。テストは必要な口だけ差し替えればよい
+  const gh = { readTasks, writeTasks, readWeek, writeWeek, ...io };
+
   const server = new McpServer(
     { name: 'task-3days', version: '2.0.0' },
     {
       instructions:
-        '3日間タスクビューア（https://reiji55.github.io/task-3days/）の tasks.txt を読み書きする。' +
-        '日付は Asia/Tokyo。まず get_tasks で現状と id を取ってから、他のツールを呼ぶこと。' +
+        '3日間タスクビューア（https://reiji55.github.io/task-3days/）の中身を読み書きする。' +
+        'tasks.txt が作業台（3日分＋「いつでも」）、week.json が週の時間割' +
+        '（Google カレンダーの写しで、見るだけの資料）。' +
+        '日付は Asia/Tokyo。まず get_tasks / get_week で現状と id を取ってから、他のツールを呼ぶこと。' +
         '書き換えは1回ごとに GitHub へ1コミット。'
     }
   );
@@ -44,14 +50,14 @@ export function createServer(io = { readTasks, writeTasks }) {
   // 読む → 直す → 書く をまとめる。fn は text を受けて { text, ...報告 } を返す。
   const edit = (fn, message) => async args => {
     try {
-      const { text, sha } = await io.readTasks();
+      const { text, sha } = await gh.readTasks();
       const out = fn(text, args);
       const { text: edited, ...report } = out;
       // 空になった過去の日付の見出しは、この保存に相乗りさせて片付ける
       const { text: next, pruned } = pruneEmptyDays(edited, TZ);
       if (pruned.length) report.pruned = pruned;
       if (next === text) return ok({ ...report, changed: false, note: '変更ありません' });
-      await io.writeTasks(next, sha, message(out, args));
+      await gh.writeTasks(next, sha, message(out, args));
       return ok({ ...report, changed: true });
     } catch (e) { return ng(e); }
   };
@@ -68,7 +74,7 @@ export function createServer(io = { readTasks, writeTasks }) {
     }
   }, async ({ scope }) => {
     try {
-      const { text } = await io.readTasks();
+      const { text } = await gh.readTasks();
       return ok(snapshot(parse(text).days, scope || 'window', TZ));
     } catch (e) { return ng(e); }
   });
@@ -162,6 +168,58 @@ export function createServer(io = { readTasks, writeTasks }) {
     (text, { ids }) => removeTasks(text, ids),
     out => `tasks: ${out.removed.length}件を削除`
   ));
+
+  /* ---------- 週間タイムテーブル（week.json） ---------- */
+
+  server.registerTool('get_week', {
+    title: '週の時間割を読む',
+    description:
+      'ビューアの「週」に出ている週間タイムテーブルを返す。Google カレンダーの写しで、' +
+      '月曜始まりの7日分を日ごとにまとめて返す。' +
+      'updated がいつの写しかを示し、古ければ stale に何週前かが入る。' +
+      'カレンダーそのものを見たいときはカレンダー側のツールを使うこと。',
+    inputSchema: {}
+  }, async () => {
+    try {
+      const { text } = await gh.readWeek();
+      return ok(weekSummary(text, TZ));
+    } catch (e) { return ng(e); }
+  });
+
+  server.registerTool('set_week', {
+    title: '週の時間割を差し替える',
+    description:
+      'week.json を丸ごと書き換える。ビューアの「週」がこれを読む。' +
+      'Google カレンダーから取った1週間分の予定をそのまま渡す（追記ではなく全部入れ替え）。' +
+      'week はその週のどこかの日付でよく、月曜に丸める。範囲外の予定は捨てる。' +
+      '毎週月曜の朝にこれを呼んで写しを入れ替える運用。',
+    inputSchema: {
+      week: z.string().describe('対象の週。YYYY-MM-DD。週内のどの日でも月曜に丸める'),
+      events: z.array(z.object({
+        summary: z.string().describe('予定の名前。カレンダーの summary をそのまま'),
+        start: z.string().describe('開始。ISO8601。例 "2026-09-07T07:00:00+09:00"'),
+        end: z.string().describe('終了。ISO8601'),
+        location: z.string().optional().describe('場所'),
+        calendar: z.string().optional().describe('どのカレンダーの予定か（表示名）'),
+        color: z.string().optional().describe('#rrggbb。指定しなければ名前ごとに自動で振る')
+      })).describe('その週の全予定。深夜またぎはそのまま渡してよい（画面側で切り分ける）'),
+      start_hour: z.number().optional().describe('縦軸の始まり。既定 5'),
+      end_hour: z.number().optional().describe('縦軸の終わり。26 = 翌2時。既定 26'),
+      dim: z.array(z.string()).optional()
+        .describe('薄く表示する予定の名前。既定 ["睡眠","生活時間"]。空配列で全部くっきり')
+    }
+  }, async args => {
+    try {
+      const cur = await gh.readWeek().catch(() => ({ text: '', sha: undefined }));
+      const built = buildWeek(args, { tz: TZ });
+      // 見に行っただけで中身が同じなら書かない（updated の差だけでは動かさない）
+      if (sameContent(built.json, cur.text)) {
+        return ok({ week: built.week, events: built.kept, changed: false, note: '変更ありません' });
+      }
+      await gh.writeWeek(built.json, cur.sha, `week: ${built.week} の週を更新（${built.kept}件）`);
+      return ok({ week: built.week, events: built.kept, dropped: built.dropped, changed: true });
+    } catch (e) { return ng(e); }
+  });
 
   return server;
 }

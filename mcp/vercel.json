@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git log -1 --pretty=%s | grep -q '^tasks:' && exit 0 || exit 1"
+  "ignoreCommand": "git log -1 --pretty=%s | grep -qE '^(tasks|week):' && exit 0 || exit 1"
 }

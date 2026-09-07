@@ -1,13 +1,15 @@
 // GitHub Contents API で tasks.txt を読み書きする。
 // トークンは環境変数からのみ読む。引数でも設定でも受け取らない。
 
-const cfg = () => ({
+const cfg = (path) => ({
   owner: process.env.GITHUB_OWNER || 'reiji55',
   repo: process.env.GITHUB_REPO || 'task-3days',
-  path: process.env.TASKS_PATH || 'tasks.txt',
+  path: path || process.env.TASKS_PATH || 'tasks.txt',
   branch: process.env.GITHUB_BRANCH || 'main',
   token: process.env.GITHUB_TOKEN
 });
+
+export const WEEK_PATH = process.env.WEEK_PATH || 'week.json';
 
 const url = c => `https://api.github.com/repos/${c.owner}/${c.repo}/contents/${c.path}`;
 
@@ -60,8 +62,9 @@ export async function checkAccess(fetchImpl = fetch) {
   };
 }
 
-export async function readTasks(fetchImpl = fetch) {
-  const c = cfg();
+/** リポジトリの1ファイルを読む。path 省略で tasks.txt。 */
+export async function readFile(path, fetchImpl = fetch) {
+  const c = cfg(path);
   if (!c.token) throw new Error('GITHUB_TOKEN が設定されていません');
   const res = await fetchImpl(`${url(c)}?ref=${encodeURIComponent(c.branch)}`, {
     headers: headers(c), cache: 'no-store'
@@ -74,8 +77,9 @@ export async function readTasks(fetchImpl = fetch) {
   };
 }
 
-export async function writeTasks(text, sha, message, fetchImpl = fetch) {
-  const c = cfg();
+/** リポジトリの1ファイルを書く。sha が食い違えば書かずに投げる。 */
+export async function writeFile(path, text, sha, message, fetchImpl = fetch) {
+  const c = cfg(path);
   if (!c.token) throw new Error('GITHUB_TOKEN が設定されていません');
   const res = await fetchImpl(url(c), {
     method: 'PUT',
@@ -93,3 +97,11 @@ export async function writeTasks(text, sha, message, fetchImpl = fetch) {
   if (!res.ok) throw await fail(res, 'write');
   return (await res.json()).content.sha;
 }
+
+export const readTasks = (fetchImpl = fetch) => readFile(undefined, fetchImpl);
+export const readWeek = (fetchImpl = fetch) => readFile(WEEK_PATH, fetchImpl);
+export const writeWeek = (text, sha, message, fetchImpl = fetch) =>
+  writeFile(WEEK_PATH, text, sha, message, fetchImpl);
+
+export const writeTasks = (text, sha, message, fetchImpl = fetch) =>
+  writeFile(undefined, text, sha, message, fetchImpl);
