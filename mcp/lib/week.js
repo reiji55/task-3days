@@ -74,14 +74,22 @@ function normalize(e) {
     if (!/^#[0-9a-fA-F]{6}$/.test(c)) throw new Error(`color は #rrggbb で: ${c}`);
     out.color = c;
   }
+  if (String(e.status ?? '').trim()) {
+    const s = str(e.status, 'status');
+    if (s !== 'done' && s !== 'miss') throw new Error(`status は "done" か "miss": ${s}`);
+    out.status = s;
+  }
   return out;
 }
+
+/** 予定を見分ける鍵。時刻と名前が同じなら同じ予定とみなす。 */
+const keyOf = e => `${e.start}|${e.end}|${e.summary}`;
 
 /**
  * week.json 全体を組み立てる。週の月曜に丸め、範囲外の予定は捨てる。
  * @returns {{ json:string, week:string, kept:number, dropped:number }}
  */
-export function buildWeek(input, { updated, tz = 'Asia/Tokyo', now = new Date() } = {}) {
+export function buildWeek(input, { updated, tz = 'Asia/Tokyo', now = new Date(), keepStatus = '' } = {}) {
   const week = mondayOf(String(input.week ?? '').trim());
   const startHour = Number(input.start_hour ?? 5);
   const endHour = Number(input.end_hour ?? 26);
@@ -96,6 +104,20 @@ export function buildWeek(input, { updated, tz = 'Asia/Tokyo', now = new Date() 
   const to = new Date((dayNo(week) + 7) * 86400000).toISOString().slice(0, 10) + 'T03:00';
   const events = all.filter(e => e.end > from && e.start < to)
     .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+
+  // 写しを取り直しても、付けた ⭕️❌ は残す。
+  // 時刻か名前が変わったものは「別の予定」なので引き継がない
+  if (keepStatus) {
+    const was = new Map();
+    try {
+      for (const e of (JSON.parse(keepStatus).events || [])) {
+        if (e && e.status) was.set(keyOf(e), e.status);
+      }
+    } catch (e) { /* 前の写しが読めなければ引き継がない */ }
+    for (const e of events) {
+      if (!e.status && was.has(keyOf(e))) e.status = was.get(keyOf(e));
+    }
+  }
 
   const body = {
     week,
@@ -142,9 +164,16 @@ export function summary(text, tz = 'Asia/Tokyo', now = new Date()) {
       summary: e.summary,
       time: `${e.start.slice(11, 16)}-${e.end.slice(11, 16)}`,
       ...(e.location ? { location: e.location } : {}),
-      ...(e.start.slice(0, 10) !== e.end.slice(0, 10) ? { ends: e.end.slice(0, 10) } : {})
+      ...(e.start.slice(0, 10) !== e.end.slice(0, 10) ? { ends: e.end.slice(0, 10) } : {}),
+      ...(e.status ? { status: e.status } : {})
     });
   }
+
+  // ❌ を付けたもの＝やらなかった枠。カレンダーから消す相談に使う
+  const missed = (w.events || [])
+    .filter(e => e.status === 'miss')
+    .map(e => ({ summary: e.summary, start: e.start, end: e.end,
+                 ...(e.calendar ? { calendar: e.calendar } : {}) }));
 
   const today = todayKey(tz, now);
   const behind = Math.round((dayNo(mondayOf(today)) - base) / 7);
@@ -153,6 +182,8 @@ export function summary(text, tz = 'Asia/Tokyo', now = new Date()) {
     today,
     updated: w.updated || null,
     stale: behind > 0 ? `${behind}週前の写しです` : null,
+    done: (w.events || []).filter(e => e.status === 'done').length,
+    missed,
     days
   };
 }

@@ -5,7 +5,7 @@
 // 消える／端末ごとに入れ直す、という問題がこれで無くなる。
 
 import { timingSafeEqual } from 'node:crypto';
-import { readTasks, writeTasks, checkAccess } from './github.js';
+import { readTasks, writeTasks, readWeek, writeWeek, checkAccess } from './github.js';
 
 const MAX_BYTES = 200_000;   // tasks.txt は数KB。桁違いに大きいものは弾く
 
@@ -43,7 +43,14 @@ function bodyOf(req) {
   return b;
 }
 
-export function createTasksApi(io = { readTasks, writeTasks, checkAccess }, { sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+export function createTasksApi(io = {}, { sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+  const gh = { readTasks, writeTasks, readWeek, writeWeek, checkAccess, ...io };
+
+  // ?file=week で週の時間割。既定は tasks.txt
+  const pick = url => url.searchParams.get('file') === 'week'
+    ? { read: gh.readWeek, write: gh.writeWeek, json: true, message: 'week: 更新' }
+    : { read: gh.readTasks, write: gh.writeTasks, json: false, message: 'tasks: 更新' };
+
   return async function handler(req, res) {
     setCors(res);
 
@@ -62,13 +69,15 @@ export function createTasksApi(io = { readTasks, writeTasks, checkAccess }, { sl
       return send(res, 401, { error: '暗証番号が違います' });
     }
 
+    const target = pick(url);
+
     try {
       if (req.method === 'GET') {
         // ?check=1 … トークンで何ができるかだけ見る。ファイルには触らない
         if (url.searchParams.get('check')) {
-          return send(res, 200, await (io.checkAccess || checkAccess)());
+          return send(res, 200, await gh.checkAccess());
         }
-        const { text, sha } = await io.readTasks();
+        const { text, sha } = await target.read();
         return send(res, 200, { text, sha });
       }
 
@@ -76,8 +85,12 @@ export function createTasksApi(io = { readTasks, writeTasks, checkAccess }, { sl
       if (typeof body.text !== 'string') return send(res, 400, { error: 'text がありません' });
       if (Buffer.byteLength(body.text, 'utf8') > MAX_BYTES) return send(res, 413, { error: '大きすぎます' });
       if (!body.sha) return send(res, 400, { error: 'sha がありません' });
+      // 壊れた JSON を書くと画面が読めなくなる。ここで止める
+      if (target.json) {
+        try { JSON.parse(body.text); } catch { return send(res, 400, { error: 'JSON として読めません' }); }
+      }
 
-      const sha = await io.writeTasks(body.text, body.sha, body.message || 'tasks: 更新');
+      const sha = await target.write(body.text, body.sha, body.message || target.message);
       return send(res, 200, { sha });
     } catch (e) {
       const msg = String(e.message || e);

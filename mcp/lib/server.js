@@ -177,6 +177,10 @@ export function createServer(io = {}) {
       'ビューアの「週」に出ている週間タイムテーブルを返す。Google カレンダーの写しで、' +
       '月曜始まりの7日分を日ごとにまとめて返す。' +
       'updated がいつの写しかを示し、古ければ stale に何週前かが入る。' +
+      '画面で付けた印が status に入る（done=やった／miss=やらなかった）。' +
+      'miss を付けたものは missed にまとめて返る。' +
+      '「やらなかった枠をカレンダーから消して」と頼まれたら、これを見て対象を出す。' +
+      'ただし消す前に必ず一覧を見せて確認を取ること。' +
       'カレンダーそのものを見たいときはカレンダー側のツールを使うこと。',
     inputSchema: {}
   }, async () => {
@@ -201,7 +205,9 @@ export function createServer(io = {}) {
         end: z.string().describe('終了。ISO8601'),
         location: z.string().optional().describe('場所'),
         calendar: z.string().optional().describe('どのカレンダーの予定か（表示名）'),
-        color: z.string().optional().describe('#rrggbb。指定しなければ名前ごとに自動で振る')
+        color: z.string().optional().describe('#rrggbb。指定しなければ名前ごとに自動で振る'),
+        status: z.enum(['done', 'miss']).optional()
+          .describe('done=やった／miss=やらなかった。渡さなければ前の写しから引き継ぐ')
       })).describe('その週の全予定。深夜またぎはそのまま渡してよい（画面側で切り分ける）'),
       start_hour: z.number().optional().describe('縦軸の始まり。既定 5'),
       end_hour: z.number().optional().describe('縦軸の終わり。26 = 翌2時。既定 26'),
@@ -211,7 +217,8 @@ export function createServer(io = {}) {
   }, async args => {
     try {
       const cur = await gh.readWeek().catch(() => ({ text: '', sha: undefined }));
-      const built = buildWeek(args, { tz: TZ });
+      // 写しを取り直しても、画面で付けた ⭕️❌ は引き継ぐ
+      const built = buildWeek(args, { tz: TZ, keepStatus: cur.text });
       // 見に行っただけで中身が同じなら書かない（updated の差だけでは動かさない）
       if (sameContent(built.json, cur.text)) {
         return ok({ week: built.week, events: built.kept, changed: false, note: '変更ありません' });

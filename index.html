@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-07-week">
+<meta name="app-version" content="2026-09-07-mark">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -263,6 +263,46 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 .wk-detail .when{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .wk-detail .where{font-size:12px;color:var(--ink-3)}
 .wk-detail[hidden]{display:none}
+.wk-detail.can-tap{cursor:pointer}
+.wk-detail .hint{font-size:11px;color:var(--ink-3);margin-top:5px}
+.wk-detail .state{font-weight:650}
+.wk-detail .state.done{color:#1f8a4c}
+.wk-detail .state.miss{color:var(--warn)}
+
+/* やった⭕️／やらなかった❌。枠いっぱいに重ねる */
+.ev.marked .rest,.ev.marked .t{opacity:.35}
+.ev.marked b{opacity:.45}
+.mark{
+  position:absolute;inset:0;pointer-events:none;
+  display:grid;place-items:center;padding:1px;
+}
+.mark svg{width:100%;height:100%;max-width:100%;max-height:100%}
+.ev.done{border-left-color:#1f8a4c}
+.ev.miss{border-left-color:#e5231b}
+
+/* ---- 印刷（A4横1枚） ---- */
+@media print{
+  html,body{background:#fff;color:#000}
+  header,#bar,#panel,#quick,.note,#wk-detail,.seg,.reload,.sub,#wk-print{display:none !important}
+  .wrap{max-width:none;margin:0;padding:0}
+  #week{--wh:7.6mm;--gut:7.5mm}
+  .wk-bar{margin:0 0 1mm;font-size:8.5pt;color:#000}
+  .wk-range{font-size:11pt;color:#000}
+  .wk-head{position:static;background:#fff;padding:0 0 .8mm}
+  .wk-head div{font-size:8pt;color:#000}
+  .wk-head b{font-size:11pt;color:#000}
+  .wk-head .now{background:none;color:#000}
+  .wk-head .now b{color:#000}
+  .wk-grid{margin-top:1.5mm}
+  .wk-col{box-shadow:inset 0 0 0 .3mm #d5d8de;background:none}
+  .wk-col.today{box-shadow:inset 0 0 0 .5mm #555}
+  .wk-hours span{font-size:7.5pt;color:#333}
+  .ev{font-size:7.5pt;line-height:1.3;border-left-width:1mm;padding:.6mm 1mm}
+  .ev .t{font-size:7pt;color:#333}
+  .ev.dim{background:#f2f2f2;color:#555}
+  .wk-now{display:none}
+}
+@page{size:A4 landscape;margin:8mm}
 </style>
 </head>
 <body>
@@ -313,6 +353,7 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
       <span class="wk-range" id="wk-range"></span>
       <span id="wk-note"></span>
       <span class="wk-fresh" id="wk-fresh"></span>
+      <button class="gear" id="wk-print" style="margin-left:8px">印刷</button>
     </div>
     <div class="wk-head" id="wk-head"></div>
     <div class="wk-grid" id="wk-grid"></div>
@@ -690,6 +731,19 @@ function showMode(){
 
 let weekErr = '';
 let selected = null;          // 詳細を開いている予定のブロック
+let weekSha = null;           // week.json の blob SHA。書き込みに要る
+let weekBusy = null;          // 保存中の Promise。連打しても直列に流す
+
+// ⭕️と❌。添付の絵に合わせた太い輪と、筆で引いたような×
+const MARK = {
+  done: '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+        '<circle cx="50" cy="50" r="36" fill="none" stroke="#c8394a" stroke-width="17"/></svg>',
+  miss: '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+        '<g stroke="#e5231b" stroke-width="16" stroke-linecap="round">' +
+        '<line x1="20" y1="20" x2="80" y2="80"/><line x1="80" y1="20" x2="20" y2="80"/></g></svg>'
+};
+const MARK_LABEL = { done: 'やった', miss: 'やらなかった' };
+const NEXT_STATUS = { '': 'done', done: 'miss', miss: '' };
 
 // 日付を1970-01-01からの通日にする。月またぎもうるう年も自分で数えない
 function dayNo(key){
@@ -777,20 +831,94 @@ function pack(list){
   flush();
 }
 
+// 下の詳細欄の中身を書く。開いている予定はここで持つ
+function drawDetail(ev){
+  const box = document.getElementById('wk-detail');
+  const s = wall(ev.start), t = wall(ev.end);
+  box.textContent = '';
+  box.append(el('div', null, ev.summary));
+  box.append(el('div','when',
+    `${dayLabel(s.day)} ${hhmm(s.min)} – ${hhmm(t.min)}` +
+    (t.day !== s.day ? `（${dayLabel(t.day)}）` : '')));
+  if (ev.location) box.append(el('div','where', ev.location));
+
+  const st = ev.status || '';
+  const line = el('div','hint');
+  if (pin) {
+    line.append(document.createTextNode('いま：'));
+    line.append(el('span', 'state' + (st ? ' ' + st : ''),
+      st ? MARK_LABEL[st] : '（印なし）'));
+    line.append(document.createTextNode(
+      `　タップで ${st === '' ? '⭕️' : st === 'done' ? '❌' : '印なし'} に`));
+  } else {
+    line.textContent = st ? MARK_LABEL[st] : '印を付けるには編集を有効にしてください';
+  }
+  box.append(line);
+  box.classList.toggle('can-tap', !!pin);
+  box.hidden = false;
+}
+
 function showEvent(b, node){
   const box = document.getElementById('wk-detail');
   document.querySelectorAll('.ev.sel').forEach(n => n.classList.remove('sel'));
   if (selected === node) { selected = null; box.hidden = true; return; }
   selected = node;
+  selectedEv = b.ev;
   node.classList.add('sel');
-  const s = wall(b.ev.start), t = wall(b.ev.end);
-  box.textContent = '';
-  box.append(el('div', null, b.ev.summary));
-  box.append(el('div','when',
-    `${dayLabel(s.day)} ${hhmm(s.min)} – ${hhmm(t.min)}` +
-    (t.day !== s.day ? `（${dayLabel(t.day)}）` : '')));
-  if (b.ev.location) box.append(el('div','where', b.ev.location));
-  box.hidden = false;
+  drawDetail(b.ev);
+}
+
+let selectedEv = null;        // 詳細欄に出している予定（week.events の中の1本）
+
+// 詳細欄をタップ → 印なし → ⭕️ → ❌ → 印なし と回す
+function cycleStatus(){
+  if (!pin || !selectedEv || !week) return;
+  selectedEv.status = NEXT_STATUS[selectedEv.status || ''] || undefined;
+  if (!selectedEv.status) delete selectedEv.status;
+  const label = selectedEv.status ? MARK_LABEL[selectedEv.status] : '印なし';
+  drawDetail(selectedEv);
+  paintMarks();
+  saveWeek(`week: ${label}（${selectedEv.summary}）`);
+}
+
+// ブロックの上の印だけ描き直す。作り直さないので画面が跳ねない
+function paintMarks(){
+  document.querySelectorAll('.wk-col .ev').forEach(n => {
+    const ev = n._ev;
+    const st = (ev && ev.status) || '';
+    n.classList.toggle('done', st === 'done');
+    n.classList.toggle('miss', st === 'miss');
+    n.classList.toggle('marked', !!st);
+    const old = n.querySelector('.mark');
+    if (old) old.remove();
+    if (st) {
+      const m = el('div','mark');
+      m.innerHTML = MARK[st];
+      n.append(m);
+    }
+  });
+}
+
+async function saveWeek(message){
+  const run = async () => {
+    say('保存中…');
+    try {
+      const res = await fetch(`${API}?file=week`, {
+        method:'PUT',
+        headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
+        body: JSON.stringify({ text: JSON.stringify(week, null, 2) + '\n', sha: weekSha, message })
+      });
+      if (res.status === 409) throw new Error('conflict');
+      if (!res.ok) throw await fail(res);
+      weekSha = (await res.json()).sha;
+      say('保存しました');
+    } catch (e) {
+      say(e.message === 'conflict' ? '他で更新されていたので読み直しました' : e.message, true);
+      await loadWeek();
+    }
+  };
+  weekBusy = (weekBusy || Promise.resolve()).then(run, run);
+  return weekBusy;
 }
 
 function renderWeek(){
@@ -809,9 +937,9 @@ function renderWeek(){
 
   const h0 = Number(w.start_hour ?? 5), h1 = Number(w.end_hour ?? 26);
   const hours = h1 - h0;
-  const HH = 26;                                     // 1時間の高さ(px)
-  const sec = document.getElementById('week');
-  sec.style.setProperty('--wh', HH + 'px');
+  // 高さは px で持たず --wh（CSS 側）を掛けて出す。印刷では --wh だけ差し替えれば
+  // 全部そのまま伸び縮みする
+  const at = n => `calc(var(--wh) * ${n})`;
 
   const base = dayNo(w.week);
   const now = new Date();
@@ -830,10 +958,10 @@ function renderWeek(){
 
   // 時刻の目盛り
   const gut = el('div','wk-hours');
-  gut.style.height = hours * HH + 'px';
+  gut.style.height = at(hours);
   for (let h = h0; h <= h1; h++) {
     const s = el('span', null, String(h % 24));
-    s.style.top = (h - h0) * HH + 'px';
+    s.style.top = at(h - h0);
     gut.append(s);
   }
   grid.append(gut);
@@ -841,12 +969,12 @@ function renderWeek(){
   const cols = weekBlocks(w);
   for (let d = 0; d < 7; d++) {
     const col = el('div','wk-col' + (d === todayCol ? ' today' : ''));
-    col.style.height = hours * HH + 'px';
+    col.style.height = at(hours);
     for (const b of cols[d]) {
       const n = el('div','ev' + (b.dim ? ' dim' : ''));
       n.style.setProperty('--c', b.color);
-      n.style.top = (b.top / 60) * HH + 'px';
-      n.style.height = Math.max((b.len / 60) * HH - 1, 9) + 'px';
+      n.style.top = at(b.top / 60);
+      n.style.height = `max(calc(var(--wh) * ${b.len / 60} - 1px), 9px)`;
       const wpc = 100 / (b.ncols || 1);
       n.style.left = `calc(${b.col * wpc}% + 1px)`;
       n.style.width = `calc(${wpc}% - 2px)`;
@@ -857,6 +985,7 @@ function renderWeek(){
       const rest = String(b.ev.summary).replace(/^[▨■◆●▶□・\s]+/, '').slice(g.length);
       n.append(el('b', null, g));
       if (rest.trim()) n.append(el('span','rest', rest));
+      n._ev = b.ev;                                  // 印を塗り直すときに使う
       n.addEventListener('click', () => showEvent(b, n));
       col.append(n);
     }
@@ -864,12 +993,14 @@ function renderWeek(){
       const mins = now.getHours() * 60 + now.getMinutes() - h0 * 60;
       if (mins >= 0 && mins <= hours * 60) {
         const line = el('div','wk-now');
-        line.style.top = (mins / 60) * HH + 'px';
+        line.style.top = at(mins / 60);
         col.append(line);
       }
     }
     grid.append(col);
   }
+
+  paintMarks();
 
   document.getElementById('wk-range').textContent =
     `${dayLabel(base)} 〜 ${dayLabel(base + 6)}`;
@@ -917,10 +1048,22 @@ async function checkVersion(){
 
 async function loadWeek(){
   weekErr = '';
+  weekSha = null;
   try {
-    const res = await fetch(`${WEEK_SRC}?t=${Date.now()}`, { cache:'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    week = await res.json();
+    if (pin) {
+      // 編集できる状態なら API 経由。印を書き戻すのに SHA が要る
+      const res = await fetch(`${API}?file=week&t=${Date.now()}`, {
+        headers: { 'X-Pin': pin }, cache:'no-store'
+      });
+      if (!res.ok) throw await fail(res);
+      const json = await res.json();
+      weekSha = json.sha;
+      week = JSON.parse(json.text);
+    } else {
+      const res = await fetch(`${WEEK_SRC}?t=${Date.now()}`, { cache:'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      week = await res.json();
+    }
   } catch (e) {
     week = null;
     weekErr = e.message;
@@ -1038,6 +1181,33 @@ document.getElementById('quick').addEventListener('submit', e => {
 
 document.getElementById('v-days').addEventListener('click', () => setView('days'));
 document.getElementById('v-week').addEventListener('click', () => setView('week'));
+document.getElementById('wk-detail').addEventListener('click', cycleStatus);
+document.getElementById('wk-print').addEventListener('click', () => window.print());
+
+/* ---------- 横になぞって画面を切り替える ----------
+   ホーム画面のアプリでも普通に効く。ただし縦スクロールを邪魔しないよう、
+   横の動きがはっきり勝っているときだけ切り替える。
+   画面の左右の端から始まった指は Safari の「戻る」なので拾わない。 */
+(() => {
+  const EDGE = 24, DIST = 60, SLOPE = 1.7;
+  let x0 = 0, y0 = 0, live = false;
+
+  addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { live = false; return; }
+    const t = e.touches[0];
+    live = t.clientX > EDGE && t.clientX < innerWidth - EDGE;
+    x0 = t.clientX; y0 = t.clientY;
+  }, { passive: true });
+
+  addEventListener('touchend', e => {
+    if (!live) return;
+    live = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) < DIST || Math.abs(dx) < Math.abs(dy) * SLOPE) return;
+    setView(dx < 0 ? 'week' : 'days');       // 左へ払えば週、右へ払えば3日
+  }, { passive: true });
+})();
 
 document.getElementById('reload').addEventListener('click', () => {
   say('');
