@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-09-board3">
+<meta name="app-version" content="2026-09-09-guide">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -46,7 +46,7 @@ body{
   padding:0 0 env(safe-area-inset-bottom);
   -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:640px;margin:0 auto;padding:0 14px 56px}
+.wrap{max-width:640px;margin:0 auto;padding:0 14px 104px}
 
 header{
   position:sticky; top:0; z-index:10;
@@ -66,6 +66,7 @@ h1{
   flex:none;font-size:12px;color:var(--ink-3);margin-left:auto;
   white-space:nowrap;font-variant-numeric:tabular-nums;
 }
+h1:empty{flex:1}                 /* ボードは面の中に見出しがある。上は右へ寄せる */
 .reload{
   flex:none;white-space:nowrap;
   appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
@@ -243,13 +244,30 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 #deck > .pane.off{display:none}      /* 動かしている間は隣だけ off を外す */
 
 /* ---- 表示の切り替え ---- */
-.seg{flex:none;display:flex;border:1px solid var(--line);border-radius:999px;
-  overflow:hidden;background:var(--panel)}
-.seg button{
-  appearance:none;border:0;background:transparent;color:var(--ink-3);white-space:nowrap;
-  font:inherit;font-size:12px;font-weight:550;padding:3px 10px;cursor:pointer;
+/* ---- 下の切り替え。しるしだけで、真ん中がタスク ---- */
+#tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  display:flex;justify-content:space-around;align-items:flex-end;
+  background:color-mix(in srgb, var(--panel) 90%, transparent);
+  backdrop-filter:saturate(180%) blur(14px);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);
+  border-top:1px solid var(--line);
+  padding:9px 0 calc(10px + env(safe-area-inset-bottom));
 }
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+#tabs button{
+  appearance:none;border:0;background:transparent;cursor:pointer;
+  flex:1;display:grid;justify-items:center;gap:5px;padding:2px 0;color:var(--ink-3);
+}
+#tabs svg{
+  width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+#tabs i{width:4px;height:4px;border-radius:50%;background:transparent}
+#tabs button[aria-pressed="true"]{color:var(--ink)}
+#tabs button[aria-pressed="true"] svg{stroke-width:2.2}
+#tabs button[aria-pressed="true"] i{background:currentColor}
+#tabs button:active{opacity:.55}
+body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない */
 
 /* ---- 週間タイムテーブル ---- */
 #week[hidden]{display:none}
@@ -332,24 +350,52 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 /* ---- ボード（やり方を書き溜めておく読み物） ----
    一覧は色付きのカードを重ねて置き、タップすると全画面の詳細になる。
    詳細は上半分がカードの色、下から白い面がせり上がって中身を見せる。 */
-.bd-bar{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px;color:var(--ink-3)}
-.bd-count{font-variant-numeric:tabular-nums}
-#bd-state{margin-left:auto;font-variant-numeric:tabular-nums}
+.bd-hero{display:flex;align-items:center;gap:12px;margin:10px 0 0;padding:0 4px}
+.bd-title{
+  position:relative;display:inline-block;margin:0;
+  font-size:33px;font-weight:700;letter-spacing:-.02em;line-height:1.15;
+}
+.bd-ring{
+  position:absolute;left:-27px;top:-17px;width:calc(100% + 54px);height:calc(100% + 34px);
+  fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;
+  opacity:.88;pointer-events:none;
+}
+.bd-plus{
+  appearance:none;margin-left:auto;flex:none;width:38px;height:38px;border-radius:50%;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
+  font:inherit;font-size:19px;line-height:1;cursor:pointer;
+}
+.bd-plus:active{opacity:.6}
+.bd-plus[hidden]{display:none}
+
+.bd-search{
+  display:flex;align-items:center;gap:9px;margin:26px 0 18px;padding:0 4px;
+  color:var(--ink-3);
+}
+.bd-search svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;
+  stroke-width:1.8;stroke-linecap:round}
+.bd-search input{
+  flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);
+  background:transparent;border:0;padding:4px 0;
+}
+.bd-search input:focus{outline:none}
+.bd-search input::placeholder{color:var(--ink-3)}
+.bd-search input::-webkit-search-cancel-button{-webkit-appearance:none}
+#bd-state{flex:none;font-size:11px;font-variant-numeric:tabular-nums}
 #bd-state.bad{color:var(--warn)}
-#bd-add[hidden]{display:none}
 #bd-stack{display:flex;flex-direction:column;padding-bottom:6px}
 
 /* カードは重ねる。下の1枚が覗いていることで「まだ続く」と分かる */
 .bd-card{
-  position:relative;border-radius:24px;padding:24px 20px 34px;
+  position:relative;border-radius:24px;padding:17px 20px 24px;
   background:var(--c);color:#14130f;cursor:pointer;
   box-shadow:0 -2px 10px -4px rgba(0,0,0,.22);
 }
-.bd-card + .bd-card{margin-top:-16px}
+.bd-card + .bd-card{margin-top:-13px}
 .bd-card:active{filter:brightness(.97)}
 .bd-when{font-size:12px;font-weight:600;color:rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
 .bd-name{
-  margin-top:13px;font-size:24px;font-weight:700;line-height:1.24;
+  margin-top:9px;font-size:24px;font-weight:700;line-height:1.24;
   letter-spacing:-.01em;word-break:break-word;
 }
 .bd-empty{color:var(--ink-3);font-size:13px;padding:10px 2px}
@@ -385,10 +431,20 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 }
 .bd-big::placeholder{color:rgba(0,0,0,.35)}
 .bd-big:focus{outline:none}
-.bd-rows{margin-top:22px;font-size:13px}
-.bd-row{display:flex;gap:14px;padding:5px 0}
-.bd-row span{color:rgba(0,0,0,.52)}
-.bd-row b{margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums}
+.bd-rows{margin-top:24px;font-size:13px}
+.bd-row{display:flex;gap:16px;align-items:flex-start;padding:7px 0}
+.bd-row > span{flex:none;padding-top:2px;color:rgba(0,0,0,.52)}
+.bd-row > .rv{
+  flex:1;min-width:0;text-align:right;font-weight:500;line-height:1.55;
+  font-variant-numeric:tabular-nums;word-break:break-word;white-space:pre-wrap;
+}
+textarea.rv{
+  display:block;resize:none;overflow:hidden;border:0;border-radius:7px;
+  background:transparent;color:#14130f;font:inherit;font-size:13px;
+  padding:2px 7px;margin:-2px -7px;width:calc(100% + 14px);
+}
+textarea.rv:focus{outline:none;background:rgba(255,255,255,.55)}
+textarea.rv::placeholder{color:rgba(0,0,0,.3)}
 .bd-nav{
   position:absolute;left:0;right:0;bottom:var(--rest);margin-bottom:11px;
   display:flex;justify-content:center;gap:5px;pointer-events:none;
@@ -436,7 +492,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 /* ---- 印刷（A4横1枚） ---- */
 @media print{
   html,body{background:#fff;color:#000}
-  header,#bar,#panel,#quick,.note,#wk-detail,.seg,.reload,.sub,#wk-print,
+  header,#bar,#panel,#quick,.note,#wk-detail,#tabs,.reload,.sub,#wk-print,
   #bd-detail{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
@@ -467,11 +523,6 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 <div class="wrap">
   <header>
     <h1 id="h1">3日間タスク</h1>
-    <div class="seg" role="group" aria-label="表示の切り替え">
-      <button id="v-days" aria-pressed="true">3日</button>
-      <button id="v-week" aria-pressed="false">週</button>
-      <button id="v-board" aria-pressed="false">ボード</button>
-    </div>
     <button class="reload" id="reload">更新</button>
     <span class="sub" id="stamp"></span>
   </header>
@@ -499,6 +550,30 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   </section>
 
   <div id="deck-clip"><div id="deck">
+    <div class="pane off" id="pane-board">
+      <section id="board">
+        <div class="bd-hero">
+          <h2 class="bd-title">Tasks guide<svg class="bd-ring" viewBox="0 0 240 84"
+               preserveAspectRatio="none" aria-hidden="true"><path
+               d="M203 27C199 11 156 3 118 4 62 6 17 20 13 41 9 63 55 79 113 80c56 1 108-14 113-33 3-13-11-25-33-32"
+               vector-effect="non-scaling-stroke"/></svg></h2>
+          <button class="bd-plus" id="bd-add" hidden aria-label="カードを足す">＋</button>
+        </div>
+
+        <div class="bd-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <input id="bd-q" type="search" placeholder="Search" autocomplete="off"
+                 autocapitalize="off" spellcheck="false" aria-label="カードを探す">
+          <span id="bd-state"></span>
+        </div>
+
+        <div id="bd-stack"></div>
+      </section>
+
+      <p class="note" id="bd-foot">カードをタップすると開きます。<br>
+        書いたことは <code>board.json</code> に残り、Claude からも読めます。</p>
+    </div>
+
     <div class="pane" id="pane-days">
       <form id="quick" hidden>
         <input id="quick-text" type="text" enterkeyhint="done" autocomplete="off"
@@ -528,21 +603,23 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
       <p class="note" id="wk-foot">予定は <code>week.json</code>。実体は Google カレンダーで、<br>毎週月曜の朝に写しが入れ替わります。</p>
     </div>
 
-    <div class="pane off" id="pane-board">
-      <section id="board">
-        <div class="bd-bar">
-          <span class="bd-count" id="bd-count"></span>
-          <span id="bd-state"></span>
-          <button class="gear" id="bd-add" hidden>＋ カード</button>
-        </div>
-        <div id="bd-stack"></div>
-      </section>
-
-      <p class="note" id="bd-foot">カードをタップすると開きます。<br>
-        書いたことは <code>board.json</code> に残り、Claude からも読めます。</p>
-    </div>
   </div></div>
 </div>
+
+<nav id="tabs" aria-label="表示の切り替え">
+  <button id="v-board" aria-pressed="false" aria-label="ガイド">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11a1 1 0 011 1v16l-6.5-4.6L5.5 20.5v-16a1 1 0 011-1z"/></svg>
+    <i></i>
+  </button>
+  <button id="v-days" aria-pressed="true" aria-label="タスク">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8 12.2l2.8 2.8L16.2 9.4"/></svg>
+    <i></i>
+  </button>
+  <button id="v-week" aria-pressed="false" aria-label="週">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3.5"/><path d="M8 3.2v4M16 3.2v4M3.5 10.5h17"/></svg>
+    <i></i>
+  </button>
+</nav>
 
 <!-- 詳細。全画面なので .wrap の外に出す（#deck に transform が掛かっていると
      position:fixed がそちらを基準にしてしまう） -->
@@ -1346,11 +1423,12 @@ async function loadWeek(){
 const BOARD_SRC = 'board.json';
 const BOARD_KEY = 'task3days.board';
 const BOARD_WAIT = 1200;        // 打ち終わってからこれだけ待って、裏で書く
-const BD_FIELDS = [
-  { k:'goal',    label:'GOAL',    hint:'どうなったら終わりか' },
-  { k:'purpose', label:'PURPOSE', hint:'なぜやるのか' },
-  { k:'detail',  label:'DETAIL',  hint:'やり方・手順・覚え書き' }
+// 色の面には短い2つを行で並べ、長い Detail だけ白い面に入れる（見本と同じ割り）
+const BD_ROWS = [
+  { k:'purpose', label:'Purpose', hint:'なぜやるのか' },
+  { k:'goal',    label:'Goal',    hint:'どうなったら終わりか' }
 ];
+const BD_SHEET = { k:'detail', label:'Detail', hint:'やり方・手順・覚え書き' };
 // 札の色。どれも明るいので、上に乗る字は明暗どちらでも黒のまま
 const BD_COLORS = ['#8beac9','#ffe142','#d07ae5','#ffb59c','#a8c6ff','#c9e86b'];
 
@@ -1454,42 +1532,70 @@ function bdCard(c, i){
   return node;
 }
 
+// 検索は見出しと中身をまとめて見る。色と行き来のために元の並び順を持ち回る
+function bdList(){
+  const q = (document.getElementById('bd-q').value || '').trim().toLowerCase();
+  const all = (board ? board.cards : []).map((c, i) => ({ c, i }));
+  if (!q) return all;
+  return all.filter(({ c }) =>
+    ['title','goal','purpose','detail'].some(k => String(c[k] || '').toLowerCase().includes(q)));
+}
+
 function renderBoard(){
   const stack = document.getElementById('bd-stack');
-  const count = document.getElementById('bd-count');
   stack.textContent = '';
   document.getElementById('bd-add').hidden = !pin || !board;
 
   if (!board) {
-    count.textContent = '';
     stack.append(el('div', boardErr ? 'err' : 'bd-empty',
       boardErr ? `board.json を読み込めませんでした（${boardErr}）。` : '読み込み中…'));
     return;
   }
-  count.textContent = board.cards.length ? `${board.cards.length}枚` : '';
-  if (!board.cards.length) {
+  const list = bdList();
+  if (!list.length) {
     stack.append(el('div','bd-empty',
-      pin ? '「＋ カード」から書き始められます。' : 'まだ何も書かれていません。'));
+      board.cards.length ? '見つかりませんでした。'
+      : pin ? '右上の ＋ から書き始められます。' : 'まだ何も書かれていません。'));
     return;
   }
-  board.cards.forEach((c, i) => stack.append(bdCard(c, i)));
+  list.forEach(({ c, i }) => stack.append(bdCard(c, i)));
 }
 
 /* ---------- ボードの詳細（全画面） ----------
    カードの色がそのまま画面いっぱいに広がり、下から白い面がせり上がる。
    白い面は指について動き、離すと近い方に吸い付く。 */
 
-const PEEK = 46, FULL = 20;      // 白い面の上端。画面の高さに対する %
+const FULL = 20;                 // 上げたときの上端。画面の高さに対する %
 let bdAt = -1;                   // 開いているカード。-1 は一覧
 let bdUp = false;                // 白い面が上まで来ているか
+let restY = 0;                   // 休んでいるときの上端（px）
 
 const sheet = () => document.getElementById('bd-sheet');
 const detail = () => document.getElementById('bd-detail');
+const boxH = () => detail().clientHeight || window.innerHeight;
+
+// 白い面は Created on のすぐ下で休ませる。見本と同じで、色の面に隙間を作らない。
+// 欄の量で位置が変わるので、毎回測る
+function measureRest(){
+  const box = detail();
+  const rows = document.getElementById('bd-rows');
+  const h = boxH();
+  const under = rows.getBoundingClientRect().bottom - box.getBoundingClientRect().top;
+  restY = Math.min(Math.max(under + 44, h * 0.32), h * 0.68);
+  box.style.setProperty('--rest', (h - restY) + 'px');
+}
 
 function sheetSet(up){
   bdUp = !!up;
   sheet().classList.remove('drag');
-  sheet().style.setProperty('--sheet', (bdUp ? FULL : PEEK) + '%');
+  sheet().style.setProperty('--sheet', bdUp ? FULL + '%' : restY + 'px');
+}
+
+// 中身を入れた直後に、高さを合わせて休む位置を決める
+function bdLayout(){
+  detail().querySelectorAll('textarea').forEach(grow);
+  measureRest();
+  sheetSet(bdUp);
 }
 
 // 詳細の中身を入れ替える。カードを行き来しても作り直さない
@@ -1509,38 +1615,44 @@ function bdFill(i){
     touchBoard(`board: 見出しを更新（${big.value.trim() || '無題'}）`);
   };
 
+  // 打ち込める欄を1つ作る。読むだけなら、ただの文字にする
+  const write = (f, cls) => {
+    if (!pin) return el('div', cls, c[f.k] || '');
+    const ta = document.createElement('textarea');
+    ta.className = cls;
+    ta.rows = 1;
+    ta.value = c[f.k] || '';
+    ta.placeholder = f.hint;
+    ta.setAttribute('aria-label', f.label);
+    ta.addEventListener('input', () => {
+      c[f.k] = ta.value;
+      grow(ta);
+      touchBoard(`board: ${f.label} を更新（${(c.title || '').trim() || '無題'}）`);
+    });
+    return ta;
+  };
+
+  // 色の面には Purpose / Goal / Created on。見本と同じ並び
   const rows = document.getElementById('bd-rows');
   rows.textContent = '';
-  const row = el('div','bd-row');
-  row.append(el('span', null, '作成日'), el('b', null, c.created || '—'));
-  rows.append(row);
+  for (const f of BD_ROWS) {
+    if (!pin && !c[f.k]) continue;               // 読むだけなら空欄は出さない
+    const row = el('div','bd-row');
+    row.append(el('span', null, f.label), write(f, 'rv'));
+    rows.append(row);
+  }
+  const made = el('div','bd-row');
+  made.append(el('span', null, 'Created on'), el('div','rv', c.created || '—'));
+  rows.append(made);
 
+  // 白い面には Detail だけ。長い文章はここで読み書きする
   const fields = document.getElementById('bd-fields');
   fields.textContent = '';
-  for (const f of BD_FIELDS) {
-    const val = c[f.k] || '';
-    if (!pin && !val) continue;                  // 読むだけなら空欄は出さない
+  if (pin || c.detail) {
     const wrap = el('div','bd-f');
-    wrap.append(el('span','bd-k', f.label));
-    if (pin) {
-      const ta = document.createElement('textarea');
-      ta.className = 'bd-v';
-      ta.rows = 1;
-      ta.value = val;
-      ta.placeholder = f.hint;
-      ta.setAttribute('aria-label', f.label);
-      ta.addEventListener('input', () => {
-        c[f.k] = ta.value;
-        grow(ta);
-        touchBoard(`board: ${f.label} を更新（${(c.title || '').trim() || '無題'}）`);
-      });
-      wrap.append(ta);
-    } else {
-      wrap.append(el('div','bd-v', val));
-    }
+    wrap.append(el('span','bd-k', BD_SHEET.label), write(BD_SHEET, 'bd-v'));
     fields.append(wrap);
-  }
-  if (!pin && !fields.childNodes.length) {
+  } else {
     fields.append(el('div','bd-empty','まだ何も書かれていません。'));
   }
   if (pin) {
@@ -1566,20 +1678,18 @@ function bdFill(i){
   }
 
   fields.scrollTop = 0;
-  requestAnimationFrame(() => {
-    grow(big);
-    fields.querySelectorAll('textarea.bd-v').forEach(grow);
-  });
 }
 
 function bdShow(i){
   if (!board || !board.cards[i]) return;
   bdFill(i);
   const box = detail();
-  box.hidden = false;
-  sheetSet(false);
+  box.hidden = false;                            // 測るには出しておく必要がある
+  bdUp = false;
+  bdLayout();
   box.offsetHeight;                              // ここまでを確定させてから動かす
   box.classList.add('on');
+  document.body.classList.add('on-detail');
   document.body.style.overflow = 'hidden';
 }
 
@@ -1587,6 +1697,7 @@ function bdHide(){
   const box = detail();
   box.classList.remove('on');
   bdAt = -1;
+  document.body.classList.remove('on-detail');
   document.body.style.overflow = '';
   setTimeout(() => { if (bdAt < 0) box.hidden = true; }, 360);
   renderBoard();                                 // 見出しを直していたら一覧にも映す
@@ -1601,7 +1712,8 @@ function bdGo(step){
   box.classList.add('slide');
   setTimeout(() => {
     bdFill(next);
-    sheetSet(false);
+    bdUp = false;
+    bdLayout();
     box.classList.remove('slide');
   }, 160);
 }
@@ -1669,7 +1781,7 @@ async function loadBoard(){
 
 /* ---------- ページの送り ---------- */
 
-const VIEWS = ['days', 'week', 'board'];
+const VIEWS = ['board', 'days', 'week'];   // 下のタブと同じ並び。真ん中がタスク
 const deck = () => document.getElementById('deck');
 const panes = () => VIEWS.map(v => document.getElementById('pane-' + v));
 const paneIndex = () => Math.max(0, VIEWS.indexOf(view));
@@ -1678,8 +1790,9 @@ let sliding = false;
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
   document.getElementById('quick').hidden = view !== 'days' || !pin;
+  // ボードは面の中に大きな見出しを持っているので、上は空けておく
   document.getElementById('h1').textContent =
-    view === 'week' ? '週の時間割' : view === 'board' ? 'ボード' : '3日間タスク';
+    view === 'week' ? '週の時間割' : view === 'board' ? '' : '3日間タスク';
   VIEWS.forEach(k => document.getElementById('v-' + k)
     .setAttribute('aria-pressed', String(k === view)));
   try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 保存できなくても動く */ }
@@ -1809,12 +1922,12 @@ function setView(next){
   let x0 = 0, y0 = 0, base = 0, lock = 'no', from = '';
 
   const open = () => !detail().hidden && bdAt >= 0;
-  const height = () => detail().clientHeight || window.innerHeight;
-  const pct = () => (bdUp ? FULL : PEEK) / 100 * height();
+  const top = () => FULL / 100 * boxH();
+  const pct = () => (bdUp ? top() : restY);
 
   // 白い面を指の位置に置く。行き過ぎは重くして端を知らせる
   function put(px){
-    const lo = FULL / 100 * height(), hi = PEEK / 100 * height();
+    const lo = top(), hi = restY;
     const y = px < lo ? lo - (lo - px) / 3 : px > hi ? hi + (px - hi) / 3 : px;
     sheet().classList.add('drag');
     sheet().style.setProperty('--sheet', y + 'px');
@@ -1867,7 +1980,7 @@ function setView(next){
   // 帯をつまむ代わりに叩いても上げ下げできる
   document.getElementById('bd-grip').addEventListener('click', () => sheetSet(!bdUp));
   document.getElementById('bd-back').addEventListener('click', bdHide);
-  addEventListener('resize', () => { if (open()) sheetSet(bdUp); });
+  addEventListener('resize', () => { if (open()) bdLayout(); });
 })();
 
 /* ---------- 読み込み ---------- */
@@ -1975,9 +2088,12 @@ VIEWS.forEach(k => document.getElementById('v-' + k)
 document.getElementById('wk-detail').addEventListener('click', cycleStatus);
 document.getElementById('wk-print').addEventListener('click', () => window.print());
 
+document.getElementById('bd-q').addEventListener('input', renderBoard);
+
 document.getElementById('bd-add').addEventListener('click', () => {
   if (!pin || !board) return;
   board.cards.push({ id: 'c' + Date.now().toString(36), title: '', created: ymd(new Date()) });
+  document.getElementById('bd-q').value = '';    // 絞り込みで見えないと困る
   renderBoard();
   bdShow(board.cards.length - 1);        // 足したらそのまま見出しを打てる
   document.getElementById('bd-big').focus();
