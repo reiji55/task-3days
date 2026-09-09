@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-09-board">
+<meta name="app-version" content="2026-09-09-board2">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -1255,8 +1255,12 @@ async function loadWeek(){
       });
       if (!res.ok) throw await fail(res);
       const json = await res.json();
+      // 読めたものが本当に週かを確かめてから SHA を持つ。別のファイルが返って
+      // きていた場合にその SHA で書き戻すと、そちらを潰してしまう
+      const got = JSON.parse(json.text);
+      if (!Array.isArray(got.events)) throw new Error('week.json ではありません');
+      week = got;
       weekSha = json.sha;
-      week = JSON.parse(json.text);
       return renderWeek();
     } catch (e) {
       weekErr = e.message;        // API が駄目でも、下の公開ファイルなら見られる
@@ -1524,8 +1528,12 @@ async function loadBoard(){
       });
       if (!res.ok) throw await fail(res);
       const json = await res.json();
+      // 中身がボードだと確かめてから SHA を持つ。まだ ?file=board を知らない
+      // サーバーは tasks.txt を返してくるので、その SHA で書くと潰してしまう
+      const cur = JSON.parse(json.text);
+      if (!Array.isArray(cur.cards)) throw new Error('board.json ではありません');
+      got = cur;
       boardSha = json.sha;
-      got = JSON.parse(json.text);
     } catch (e) {
       boardErr = e.message;        // API が駄目でも、下の公開ファイルなら読める
     }
@@ -1546,6 +1554,8 @@ async function loadBoard(){
                   cards: Array.isArray(got.cards) ? got.cards : [] } : null;
   restoreDraft();
   renderBoard();
+  // 読めたけれど書き戻せない状態（公開ファイルから読んだ）を先に伝えておく
+  if (board && pin && !boardSha) bdSay('いまは端末の中にだけ残ります');
 }
 
 /* ---------- ページの送り ---------- */
