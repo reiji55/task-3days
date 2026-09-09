@@ -5,7 +5,9 @@
 // 消える／端末ごとに入れ直す、という問題がこれで無くなる。
 
 import { timingSafeEqual } from 'node:crypto';
-import { readTasks, writeTasks, readWeek, writeWeek, checkAccess } from './github.js';
+import {
+  readTasks, writeTasks, readWeek, writeWeek, readBoard, writeBoard, checkAccess
+} from './github.js';
 
 const MAX_BYTES = 200_000;   // tasks.txt は数KB。桁違いに大きいものは弾く
 
@@ -44,12 +46,15 @@ function bodyOf(req) {
 }
 
 export function createTasksApi(io = {}, { sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
-  const gh = { readTasks, writeTasks, readWeek, writeWeek, checkAccess, ...io };
+  const gh = { readTasks, writeTasks, readWeek, writeWeek, readBoard, writeBoard, checkAccess, ...io };
 
-  // ?file=week で週の時間割。既定は tasks.txt
-  const pick = url => url.searchParams.get('file') === 'week'
-    ? { read: gh.readWeek, write: gh.writeWeek, json: true, message: 'week: 更新' }
-    : { read: gh.readTasks, write: gh.writeTasks, json: false, message: 'tasks: 更新' };
+  // ?file=week で週の時間割、?file=board でボード。既定は tasks.txt
+  const FILES = {
+    week:  () => ({ read: gh.readWeek,  write: gh.writeWeek,  json: true,  message: 'week: 更新' }),
+    board: () => ({ read: gh.readBoard, write: gh.writeBoard, json: true,  message: 'board: 更新' }),
+    tasks: () => ({ read: gh.readTasks, write: gh.writeTasks, json: false, message: 'tasks: 更新' })
+  };
+  const pick = url => (FILES[url.searchParams.get('file')] || FILES.tasks)();
 
   return async function handler(req, res) {
     setCors(res);

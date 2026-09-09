@@ -10,8 +10,14 @@ import { createTasksApi } from '../lib/tasks-api.js';
 const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
 const PIN = '0402';
 
+const BOARD = JSON.stringify({ updated: null, cards: [{ id: 'a', title: 'あ' }] }, null, 2) + '\n';
+
 function fixture() {
-  const state = { store: { text: ORIG, sha: 'sha0' }, commits: [] };
+  const state = {
+    store: { text: ORIG, sha: 'sha0' },
+    boardStore: { text: BOARD, sha: 'b0' },
+    commits: []
+  };
   state.io = {
     async readTasks() { return { ...state.store }; },
     async writeTasks(text, sha, message) {
@@ -19,6 +25,13 @@ function fixture() {
       state.store = { text, sha: 'sha' + (state.commits.length + 1) };
       state.commits.push({ message, text });
       return state.store.sha;
+    },
+    async readBoard() { return { ...state.boardStore }; },
+    async writeBoard(text, sha, message) {
+      if (sha !== state.boardStore.sha) throw new Error('別の場所で先に更新されていました。読み直してからやり直してください');
+      state.boardStore = { text, sha: 'b' + (state.commits.length + 1) };
+      state.commits.push({ message, text });
+      return state.boardStore.sha;
     }
   };
   return state;
@@ -183,4 +196,36 @@ test('?check=1 でトークンの権限だけ見られる（ファイルには�
   });
   assert.equal(readCalled, false, 'tasks.txt は読まない');
   assert.equal(f.commits.length, 0);
+});
+
+test('?file=board で board.json を読み書きし、tasks.txt には触らない', async () => {
+  process.env.EDIT_PIN = PIN;
+  const f = fixture();
+  await withApi(f.io, async base => {
+    const r = await get(`${base}?file=board`, PIN);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.text, BOARD);
+    assert.equal(j.sha, 'b0');
+
+    const next = JSON.stringify({ updated: null, cards: [] }) + '\n';
+    const w = await put(`${base}?file=board`, PIN, { text: next, sha: 'b0' });
+    assert.equal(w.status, 200);
+    assert.equal((await w.json()).sha, 'b1');
+  });
+  assert.equal(f.store.text, ORIG, 'tasks.txt は無傷');
+  assert.equal(f.commits.length, 1);
+  assert.match(f.commits[0].message, /^board: 更新$/);
+});
+
+test('?file=board に壊れた JSON は書かせない', async () => {
+  process.env.EDIT_PIN = PIN;
+  const f = fixture();
+  await withApi(f.io, async base => {
+    const w = await put(`${base}?file=board`, PIN, { text: '{ダメ', sha: 'b0' });
+    assert.equal(w.status, 400);
+    assert.match((await w.json()).error, /JSON として読めません/);
+  });
+  assert.equal(f.commits.length, 0);
+  assert.equal(f.boardStore.text, BOARD);
 });

@@ -23,11 +23,17 @@ const WEEK0 = JSON.stringify({
   events: [{ summary: '仕事', start: '2026-09-07T07:00:00+09:00', end: '2026-09-07T19:00:00+09:00' }]
 }, null, 2) + '\n';
 
-/** tasks.txt と week.json を持っているつもりの偽 GitHub。テスト1件につき1つ。 */
+const BOARD0 = JSON.stringify({
+  updated: '2026-09-01T09:00:00+09:00',
+  cards: [{ id: 'toeic', title: 'TOEIC対策', created: '2026-08-20', goal: '700点' }]
+}, null, 2) + '\n';
+
+/** tasks.txt / week.json / board.json を持っているつもりの偽 GitHub。テスト1件につき1つ。 */
 function fixture() {
   const state = {
     store: { text: ORIG, sha: 'sha0' },
     weekStore: { text: WEEK0, sha: 'w0' },
+    boardStore: { text: BOARD0, sha: 'b0' },
     commits: [],
     get text() { return state.store.text; },
     titles() { return [...parse(state.store.text).days.values()].flat().map(t => t.title); },
@@ -47,6 +53,13 @@ function fixture() {
       state.weekStore = { text, sha: 'w' + (state.commits.length + 1) };
       state.commits.push({ message, text });
       return state.weekStore.sha;
+    },
+    async readBoard() { return { ...state.boardStore }; },
+    async writeBoard(text, sha, message) {
+      if (sha !== state.boardStore.sha) throw new Error('別の場所で先に更新されていました');
+      state.boardStore = { text, sha: 'b' + (state.commits.length + 1) };
+      state.commits.push({ message, text });
+      return state.boardStore.sha;
     }
   });
   return state;
@@ -106,8 +119,9 @@ test('接続してツール一覧が取れる', async () => {
   await withClient(fixture().io, async client => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(t => t.name).sort(), [
-      'add_tasks', 'get_tasks', 'get_week', 'move_tasks', 'remove_tasks',
-      'set_done', 'set_memo', 'set_next', 'set_week', 'update_task'
+      'add_tasks', 'get_board', 'get_tasks', 'get_week', 'move_tasks',
+      'remove_board_card', 'remove_tasks',
+      'set_board_card', 'set_done', 'set_memo', 'set_next', 'set_week', 'update_task'
     ]);
     for (const t of tools) {
       assert.ok(t.description && t.description.length > 10, t.name);
@@ -422,4 +436,64 @@ test('週とタスクは別のファイル。互いに壊さない', async () =>
     const w = payload(await call(client, 'get_week'));
     assert.deepEqual(w.days[0].events, [{ summary: 'あ', time: '10:00-11:00' }], 'week.json も無傷');
   });
+});
+
+/* ---------- ボード ---------- */
+
+test('get_board: カードをそのまま返す', async () => {
+  await withClient(fixture().io, async client => {
+    const b = payload(await call(client, 'get_board'));
+    assert.equal(b.count, 1);
+    assert.equal(b.cards[0].id, 'toeic');
+    assert.equal(b.cards[0].goal, '700点');
+  });
+});
+
+test('set_board_card: id を渡せば直し、渡さなければ足す', async () => {
+  const f = fixture();
+  await withClient(f.io, async client => {
+    const up = payload(await call(client, 'set_board_card', { id: 'toeic', detail: '金フレから' }));
+    assert.equal(up.added, false, '既存を直したので追加ではない');
+    assert.equal(up.card.title, 'TOEIC対策', '渡さなかった欄は残る');
+    assert.equal(up.card.detail, '金フレから');
+
+    const add = payload(await call(client, 'set_board_card', { title: '転職検討', purpose: '働き方' }));
+    assert.equal(add.added, true);
+    const b = payload(await call(client, 'get_board'));
+    assert.deepEqual(b.cards.map(c => c.title), ['TOEIC対策', '転職検討']);
+  });
+  assert.equal(f.commits.length, 2);
+  assert.match(f.commits[0].message, /^board: 更新（TOEIC対策）$/);
+  assert.match(f.commits[1].message, /^board: 追加（転職検討）$/);
+  assert.equal(f.text, ORIG, 'tasks.txt は無傷');
+});
+
+test('set_board_card: 同じ中身なら書かない', async () => {
+  const f = fixture();
+  await withClient(f.io, async client => {
+    const r = payload(await call(client, 'set_board_card', { id: 'toeic', goal: '700点' }));
+    assert.equal(r.changed, false);
+  });
+  assert.equal(f.commits.length, 0);
+});
+
+test('set_board_card: 知らない id は書かずにエラーを返す', async () => {
+  const f = fixture();
+  await withClient(f.io, async client => {
+    const bad = await call(client, 'set_board_card', { id: 'nope', detail: 'x' });
+    assert.equal(bad.isError, true);
+    assert.match(bad.content[0].text, /そのカードがありません/);
+  });
+  assert.equal(f.commits.length, 0);
+  assert.equal(f.boardStore.text, BOARD0);
+});
+
+test('remove_board_card: 1枚だけ消える', async () => {
+  const f = fixture();
+  await withClient(f.io, async client => {
+    const r = payload(await call(client, 'remove_board_card', { id: 'toeic' }));
+    assert.equal(r.card.title, 'TOEIC対策');
+    assert.equal(payload(await call(client, 'get_board')).count, 0);
+  });
+  assert.match(f.commits[0].message, /^board: 削除（TOEIC対策）$/);
 });

@@ -10,6 +10,7 @@ const cfg = (path) => ({
 });
 
 export const WEEK_PATH = process.env.WEEK_PATH || 'week.json';
+export const BOARD_PATH = process.env.BOARD_PATH || 'board.json';
 
 const url = c => `https://api.github.com/repos/${c.owner}/${c.repo}/contents/${c.path}`;
 
@@ -102,6 +103,9 @@ export const readTasks = (fetchImpl = fetch) => readFile(undefined, fetchImpl);
 export const readWeek = (fetchImpl = fetch) => readFile(WEEK_PATH, fetchImpl);
 export const writeWeek = (text, sha, message, fetchImpl = fetch) =>
   writeFile(WEEK_PATH, text, sha, message, fetchImpl);
+export const readBoard = (fetchImpl = fetch) => readFile(BOARD_PATH, fetchImpl);
+export const writeBoard = (text, sha, message, fetchImpl = fetch) =>
+  writeFile(BOARD_PATH, text, sha, message, fetchImpl);
 
 export const writeTasks = (text, sha, message, fetchImpl = fetch) =>
   writeFile(undefined, text, sha, message, fetchImpl);

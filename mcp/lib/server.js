@@ -9,7 +9,8 @@ import {
   pruneEmptyDays
 } from './tasks.js';
 import { buildWeek, sameContent, summary as weekSummary } from './week.js';
-import { readTasks, writeTasks, readWeek, writeWeek } from './github.js';
+import { setCard, removeCard, summary as boardSummary } from './board.js';
+import { readTasks, writeTasks, readWeek, writeWeek, readBoard, writeBoard } from './github.js';
 
 const TZ = process.env.TZ_NAME || 'Asia/Tokyo';
 
@@ -34,7 +35,7 @@ const TASK_INPUT = z.object({
 
 export function createServer(io = {}) {
   // 既定は GitHub。テストは必要な口だけ差し替えればよい
-  const gh = { readTasks, writeTasks, readWeek, writeWeek, ...io };
+  const gh = { readTasks, writeTasks, readWeek, writeWeek, readBoard, writeBoard, ...io };
 
   const server = new McpServer(
     { name: 'task-3days', version: '2.0.0' },
@@ -42,7 +43,8 @@ export function createServer(io = {}) {
       instructions:
         '3日間タスクビューア（https://reiji55.github.io/task-3days/）の中身を読み書きする。' +
         'tasks.txt が作業台（3日分＋「いつでも」）、week.json が週の時間割' +
-        '（Google カレンダーの写しで、見るだけの資料）。' +
+        '（Google カレンダーの写しで、見るだけの資料）、' +
+        'board.json が「やり方」を書き溜めたボード（ルーチンの手順や案件の詳細）。' +
         '各タスクの next（引き継ぎ）は、本人が「これを Claude にやってほしい」と' +
         '画面から書き残したもの。読んだら拾って、済んだら空にする。' +
         '日付は Asia/Tokyo。まず get_tasks / get_week で現状と id を取ってから、他のツールを呼ぶこと。' +
@@ -245,6 +247,67 @@ export function createServer(io = {}) {
       }
       await gh.writeWeek(built.json, cur.sha, `week: ${built.week} の週を更新（${built.kept}件）`);
       return ok({ week: built.week, events: built.kept, dropped: built.dropped, changed: true });
+    } catch (e) { return ng(e); }
+  });
+
+  /* ---------- ボード（board.json） ---------- */
+
+  server.registerTool('get_board', {
+    title: 'ボードを読む',
+    description:
+      'ビューアの「ボード」に出ているカードを全部返す。' +
+      'ルーチンのやり方や、じっくり書いておきたい案件の詳細が置いてある読み物で、' +
+      '日付にも3日の窓にも縛られない。' +
+      'タスクの進め方を聞かれたら、まずここに本人の書いた手順がないか見ること。' +
+      '各カードは title・created（作成日）・goal・purpose・detail を持つ。',
+    inputSchema: {}
+  }, async () => {
+    try {
+      const { text } = await gh.readBoard();
+      return ok(boardSummary(text));
+    } catch (e) { return ng(e); }
+  });
+
+  server.registerTool('set_board_card', {
+    title: 'ボードのカードを書く',
+    description:
+      'カードを1枚足す、または直す。id を渡せばそのカードを上書きし、' +
+      '渡さなければ新しく作って末尾に足す。渡さなかった欄は元のまま残るので、' +
+      'detail だけ書き足す、といった直し方ができる。空文字を渡すとその欄が消える。' +
+      '先に get_board で id と今の中身を見てから呼ぶこと。',
+    inputSchema: {
+      id: z.string().optional().describe('get_board が返した id。省略すると新しいカード'),
+      title: z.string().optional().describe('カードの見出し。新しく作るときは必須'),
+      created: z.string().optional().describe('作成日。YYYY-MM-DD。省略すると今日'),
+      goal: z.string().optional().describe('どうなったら終わりか'),
+      purpose: z.string().optional().describe('なぜやるのか'),
+      detail: z.string().optional().describe('やり方・手順・覚え書き。改行で複数行')
+    }
+  }, async args => {
+    try {
+      const { text, sha } = await gh.readBoard();
+      const out = setCard(text, args, { tz: TZ });
+      if (sameContent(out.json, text)) {
+        return ok({ card: out.card, changed: false, note: '変更ありません' });
+      }
+      await gh.writeBoard(out.json, sha,
+        `board: ${out.added ? '追加' : '更新'}（${out.card.title}）`);
+      return ok({ card: out.card, added: out.added, changed: true });
+    } catch (e) { return ng(e); }
+  });
+
+  server.registerTool('remove_board_card', {
+    title: 'ボードのカードを消す',
+    description:
+      'カードを1枚削除する。中身も一緒に消えるので、先に get_board で見せて確認を取ること。' +
+      '（GitHub の履歴には残るので、あとから拾い直せる）',
+    inputSchema: { id: z.string().describe('get_board が返した id') }
+  }, async ({ id }) => {
+    try {
+      const { text, sha } = await gh.readBoard();
+      const out = removeCard(text, id, { tz: TZ });
+      await gh.writeBoard(out.json, sha, `board: 削除（${out.card.title}）`);
+      return ok({ card: out.card, changed: true });
     } catch (e) { return ng(e); }
   });
 

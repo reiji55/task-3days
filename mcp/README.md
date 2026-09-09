@@ -1,11 +1,12 @@
 # task-3days MCP サーバー
 
-`tasks.txt`（作業台）と `week.json`（週の時間割）を読み書きするサーバー。口が2つある。
+`tasks.txt`（作業台）、`week.json`（週の時間割）、`board.json`（やり方の書き置き）を
+読み書きするサーバー。口が2つある。
 
 1. **MCP**（`/api/mcp/<合鍵>`）… Claude / Cowork / Claude Desktop に
    **カスタムコネクタ**として繋ぐと、会話からタスクを読み書きできる
 2. **HTTP**（`/api/tasks`）… ビューア（`../index.html`）が叩く。暗証番号で守る。
-   `?file=week` を付けると `week.json` の読み書きになる（既定は `tasks.txt`）
+   `?file=week` / `?file=board` を付けるとそのファイルの読み書きになる（既定は `tasks.txt`）
 
 **GITHUB_TOKEN はここにしか無い。** ブラウザにも会話にもリポジトリにも出ない。
 ビューアが持つのは短い暗証番号だけなので、端末から消えても入れ直しが軽い。
@@ -24,6 +25,9 @@
 | `remove_tasks` | 消す。メモの行も一緒に消える |
 | `get_week` | 週の時間割（`week.json`）を日ごとにまとめて返す |
 | `set_week` | 週の時間割を丸ごと差し替える。毎週月曜の朝に呼ぶ |
+| `get_board` | ボード（`board.json`）のカードを全部返す。やり方を聞かれたらまずここ |
+| `set_board_card` | カードを1枚足す／直す。渡さなかった欄はそのまま残る |
+| `remove_board_card` | カードを1枚消す。先に一覧を見せて確認を取ること |
 
 タスクは `get_tasks` が返す `id`（`"2026-08-28#2"` = 日付 + その日の何番目か）で指す。
 番号は読むたびに振り直されるので、**書き換える前に必ず `get_tasks` を呼ぶ。**
@@ -108,6 +112,31 @@ set_week  week="2026-09-07" events=[...]     … 1週間分を丸ごと入れ替
 
 毎週月曜の朝に Routine が走り、カレンダーを読んで `set_week` を呼ぶ。
 
+### ボード（`board.json`）
+
+ビューアの「ボード」が読み書きする、**やり方の書き置き場**。
+タスクが「いま何をするか」なら、こちらは「どうやるか」。ルーチンの手順や、
+じっくり書いておきたい案件の中身が入っている。日付にも3日の窓にも縛られない。
+
+```
+get_board                                          … 全部読む（id もここで取る）
+set_board_card  id="toeic" detail="金フレ→abceed"   … 1枚だけ直す
+set_board_card  title="転職検討" goal="..."         … id なしで新しく作る
+remove_board_card  id="toeic"                      … 1枚消す
+```
+
+- カードは `id` / `title` / `created` / `goal` / `purpose` / `detail`
+- `set_board_card` は**渡した欄だけ**を書き換える。空文字を渡すとその欄が消える
+- `created` は渡さなければ今日。既にあるカードでは書き換わらない
+- **中身が同じなら書かない**（`changed: false`）
+- **「このルーチンどうやるんだっけ」と聞かれたら、まず `get_board` を見る。**
+  本人がここに手順を書いている
+
+**ビューア側は保存を待たない。** 打った瞬間に画面と `localStorage` に入り、
+手が止まって約1.2秒後に裏で1コミットする。閉じるときにも残りを出す。
+そのため**同じカードが続けて書き込まれることがある**が、`id` で上書きするので
+重複はしない。
+
 ## 構成
 
 ```
@@ -119,6 +148,7 @@ lib/handler.js     合鍵の照合と MCP トランスポート（ステート�
 lib/server.js      ツールの定義
 lib/tasks.js       tasks.txt の解析と書き換え（純粋関数）
 lib/week.js        week.json の組み立てと検証（純粋関数）
+lib/board.js       board.json の組み立てと検証（純粋関数）
 lib/github.js      GitHub Contents API
 public/index.html  / に置く案内ページ。動作には無関係
 test/              node --test で全部走る
@@ -139,6 +169,7 @@ Vercel のプロジェクト設定で入れる。**コードにもリポジト�
 | `GITHUB_BRANCH` | | 既定 `main` |
 | `TASKS_PATH` | | 既定 `tasks.txt` |
 | `WEEK_PATH` | | 既定 `week.json` |
+| `BOARD_PATH` | | 既定 `board.json` |
 | `TZ_NAME` | | 既定 `Asia/Tokyo`。「今日」の判定に使う |
 
 ## デプロイ
@@ -154,11 +185,11 @@ Vercel で **Import Git Repository** → `reiji55/task-3days`。
 `vercel.json` の `ignoreCommand` で **データの保存だけを飛ばす**ようにしてある。
 
 ```json
-{ "ignoreCommand": "git log -1 --pretty=%s | grep -qE '^(tasks|week):' && exit 0 || exit 1" }
+{ "ignoreCommand": "git log -1 --pretty=%s | grep -qE '^(tasks|week|board):' && exit 0 || exit 1" }
 ```
 
 終了コード 0 で「ビルドしない」、1 で「ビルドする」。
-ビューアと MCP からの保存は必ず `tasks: …` か `week: …` というメッセージになるので、
+ビューアと MCP からの保存は必ず `tasks: …` / `week: …` / `board: …` というメッセージになるので、
 **それだけを名指しで飛ばす**。判定に使うのは HEAD 1本だけ。
 
 以前は `git diff --quiet HEAD^ HEAD -- .`（`mcp/` に差分が無ければ飛ばす）
@@ -231,7 +262,8 @@ npm test
 GitHub だけ差し替えて通しで確認する。
 `test/http.test.mjs` は `/api/tasks` を実際の HTTP と fetch で叩き、
 認証・CORS・競合・入力検証を確かめる。
-`test/week.test.mjs` は `week.json` の組み立てと検証。
+`test/week.test.mjs` は `week.json`、`test/board.test.mjs` は `board.json` の
+組み立てと検証。
 
 ## 注意
 

@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-09-next">
+<meta name="app-version" content="2026-09-09-board">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -58,12 +58,21 @@ header{
   margin:0 -14px 16px;
   display:flex; align-items:baseline; gap:10px;
 }
-h1{font-size:16px;font-weight:650;margin:0;letter-spacing:.02em}
-.sub{font-size:12px;color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
+h1{
+  font-size:16px;font-weight:650;margin:0;letter-spacing:.02em;
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sub{
+  flex:none;font-size:12px;color:var(--ink-3);margin-left:auto;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+}
 .reload{
+  flex:none;white-space:nowrap;
   appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
   font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer;
 }
+/* 狭い画面では「◯◯時点」を落とす。3つのボタンを畳ませないため */
+@media (max-width:359px){ .sub{display:none} }
 .reload:active{opacity:.6}
 
 .day{margin:0 0 22px}
@@ -223,7 +232,7 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
   padding:1px 7px;
 }
 
-/* ---- 2ページを横に並べて、指で送る ---- */
+/* ---- ページを横に並べて、指で送る ---- */
 #deck-clip{overflow-x:clip}          /* hidden にすると sticky が効かなくなる */
 #deck{
   display:flex;align-items:flex-start;width:100%;
@@ -231,14 +240,14 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
   will-change:transform;
 }
 #deck > .pane{flex:0 0 100%;min-width:0}
-#deck > .pane.off{display:none}
-#deck.live > .pane.off{display:block}   /* 動かしている間だけ両方見せる */
+#deck > .pane.off{display:none}      /* 動かしている間は隣だけ off を外す */
 
 /* ---- 表示の切り替え ---- */
-.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel)}
+.seg{flex:none;display:flex;border:1px solid var(--line);border-radius:999px;
+  overflow:hidden;background:var(--panel)}
 .seg button{
-  appearance:none;border:0;background:transparent;color:var(--ink-3);
-  font:inherit;font-size:12px;font-weight:550;padding:3px 11px;cursor:pointer;
+  appearance:none;border:0;background:transparent;color:var(--ink-3);white-space:nowrap;
+  font:inherit;font-size:12px;font-weight:550;padding:3px 10px;cursor:pointer;
 }
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 
@@ -320,13 +329,78 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 .ev.gone-all.done{border-left-color:#7fae8f}
 .ev.gone-all.miss{border-left-color:#e08a84}
 
+/* ---- ボード（やり方を書き溜めておく読み物） ---- */
+.bd-bar{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px;color:var(--ink-3)}
+.bd-count{font-variant-numeric:tabular-nums}
+#bd-state{margin-left:auto;font-variant-numeric:tabular-nums}
+#bd-state.bad{color:var(--warn)}
+#bd-add[hidden]{display:none}
+#bd-stack{display:flex;flex-direction:column;gap:9px}
+
+.bd-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  border-left:3px solid var(--c,var(--line));
+  box-shadow:var(--shadow); overflow:hidden;
+  transition:box-shadow .26s ease, background-color .26s ease;
+}
+.bd-card.open{
+  background:color-mix(in srgb, var(--c) 5%, var(--panel));
+  box-shadow:0 1px 2px rgba(0,0,0,.05), 0 18px 36px -22px rgba(0,0,0,.4);
+}
+.bd-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer}
+.bd-title{
+  flex:1; min-width:0; margin:0; padding:0; border:0; border-radius:5px;
+  font:inherit; font-size:15.5px; font-weight:650; line-height:1.4;
+  color:var(--ink); background:transparent;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.bd-card:not(.open) .bd-title{pointer-events:none}   /* 畳んでいる間は見出しごと叩ける */
+input.bd-title:focus{outline:none;background:var(--line-soft);box-shadow:0 0 0 5px var(--line-soft)}
+input.bd-title::placeholder{color:var(--ink-3);font-weight:500}
+.bd-when{flex:none;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.bd-chev{
+  position:relative;flex:none;width:8px;height:8px;margin:-3px 3px 0 0;
+  border-right:1.6px solid var(--ink-3);border-bottom:1.6px solid var(--ink-3);
+  transform:rotate(45deg);transition:transform .3s cubic-bezier(.25,.8,.35,1);
+}
+.bd-chev::before{content:"";position:absolute;inset:-15px}   /* 指で押せる広さにする */
+.bd-card.open .bd-chev{transform:rotate(-135deg);margin-top:3px}
+
+/* 0fr → 1fr で高さを測らずに開く。中身の量が変わっても書き直さなくてよい */
+.bd-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s cubic-bezier(.25,.8,.35,1)}
+.bd-card.open .bd-body{grid-template-rows:1fr}
+.bd-inner{overflow:hidden;min-height:0;opacity:0;transition:opacity .2s ease}
+.bd-card.open .bd-inner{opacity:1;transition-delay:.07s}
+.bd-fields{padding:12px 15px 15px;border-top:1px solid var(--line-soft)}
+.bd-f{margin:0 0 14px}
+.bd-k{
+  display:block;font-size:9.5px;font-weight:700;letter-spacing:.14em;
+  color:color-mix(in srgb, var(--c) 55%, var(--ink-3));margin-bottom:4px;
+}
+.bd-v{font-size:14px;line-height:1.72;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+textarea.bd-v{
+  display:block;width:calc(100% + 12px);margin-left:-6px;resize:none;overflow:hidden;
+  font:inherit;font-size:14px;line-height:1.72;color:var(--ink-2);
+  background:transparent;border:0;border-radius:7px;padding:1px 6px;
+}
+textarea.bd-v:focus{outline:none;background:var(--line-soft);color:var(--ink)}
+textarea.bd-v::placeholder{color:var(--ink-3)}
+.bd-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.bd-del{
+  appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink-3);
+  font:inherit;font-size:11px;padding:2px 10px;border-radius:999px;cursor:pointer;margin-left:auto;
+}
+.bd-del:active{color:var(--warn);border-color:var(--warn)}
+.bd-empty{color:var(--ink-3);font-size:13px;padding:10px 2px}
+
 /* ---- 印刷（A4横1枚） ---- */
 @media print{
   html,body{background:#fff;color:#000}
   header,#bar,#panel,#quick,.note,#wk-detail,.seg,.reload,.sub,#wk-print{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
-  #pane-days{display:none !important}
+  #pane-days,#pane-board{display:none !important}
   #pane-week{display:block !important}
   .wrap{max-width:none;margin:0;padding:0}
   #week{--wh:7.6mm;--gut:7.5mm}
@@ -356,6 +430,7 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
     <div class="seg" role="group" aria-label="表示の切り替え">
       <button id="v-days" aria-pressed="true">3日</button>
       <button id="v-week" aria-pressed="false">週</button>
+      <button id="v-board" aria-pressed="false">ボード</button>
     </div>
     <button class="reload" id="reload">更新</button>
     <span class="sub" id="stamp"></span>
@@ -411,6 +486,20 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
       </section>
 
       <p class="note" id="wk-foot">予定は <code>week.json</code>。実体は Google カレンダーで、<br>毎週月曜の朝に写しが入れ替わります。</p>
+    </div>
+
+    <div class="pane off" id="pane-board">
+      <section id="board">
+        <div class="bd-bar">
+          <span class="bd-count" id="bd-count"></span>
+          <span id="bd-state"></span>
+          <button class="gear" id="bd-add" hidden>＋ カード</button>
+        </div>
+        <div id="bd-stack"></div>
+      </section>
+
+      <p class="note" id="bd-foot">上下になぞると、1枚ずつ開きます。<br>
+        書いたことは <code>board.json</code> に残り、Claude からも読めます。</p>
     </div>
   </div></div>
 </div>
@@ -1186,25 +1275,300 @@ async function loadWeek(){
   renderWeek();
 }
 
-/* ---------- 2ページの送り ---------- */
+/* ---------- ボード ----------
+   ルーチンのやり方や、じっくり書いておきたい案件の詳細を置く読み物。
+   タスクと違って「いま何をするか」ではなく「どうやるか」を書く。
 
+   ここだけは保存を待たせない。直した瞬間に画面と localStorage に入れ、
+   手が止まってから裏でまとめて board.json に書く。指が止まらないので、
+   長い文章を打っても引っかからない。 */
+
+const BOARD_SRC = 'board.json';
+const BOARD_KEY = 'task3days.board';
+const BOARD_WAIT = 1200;        // 打ち終わってからこれだけ待って、裏で書く
+const BD_FIELDS = [
+  { k:'goal',    label:'GOAL',    hint:'どうなったら終わりか' },
+  { k:'purpose', label:'PURPOSE', hint:'なぜやるのか' },
+  { k:'detail',  label:'DETAIL',  hint:'やり方・手順・覚え書き' }
+];
+
+let board = null;         // { updated, cards } まだ読んでいなければ null
+let boardSha = null;      // board.json の blob SHA。書き込みに要る
+let boardErr = '';
+let bdFocus = -1;         // 開いているカード。-1 は全部畳んだ状態
+let bdVer = 0, bdSaved = 0;   // 直した回数と、書き終えた回数。ずれていたら未保存
+let bdTimer = null, bdBusy = null, bdMsg = '';
+
+function bdSay(msg, bad){
+  const n = document.getElementById('bd-state');
+  n.textContent = msg || '';
+  n.classList.toggle('bad', !!bad);
+}
+
+// 端末の壁の時計。画面は updated をそのまま読むので、UTC では書けない
+function stampLocal(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  const off = -d.getTimezoneOffset(), a = Math.abs(off);
+  return `${ymd(d)}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
+         `${off < 0 ? '-' : '+'}${p(Math.floor(a / 60))}:${p(a % 60)}`;
+}
+const shortDate = s => {
+  const m = String(s || '').match(/^\d{4}-(\d{2})-(\d{2})/);
+  return m ? `${Number(m[1])}/${Number(m[2])}` : '';
+};
+
+// 端末の中の写し。圏外でも、閉じても、打ったものはここに残る
+function keepBoard(){
+  if (!board) return;
+  try {
+    localStorage.setItem(BOARD_KEY, JSON.stringify({
+      sha: boardSha, dirty: bdVer !== bdSaved, cards: board.cards
+    }));
+  } catch (e) { /* 入らなくても画面は動く */ }
+}
+
+// 直したら呼ぶ。画面はもう直っているので、ここは保存の予約だけ
+function touchBoard(message){
+  bdVer++;
+  bdMsg = message || bdMsg;
+  keepBoard();
+  bdSay(pin ? '未保存' : 'この端末の中だけ');
+  clearTimeout(bdTimer);
+  bdTimer = setTimeout(() => flushBoard(), BOARD_WAIT);
+}
+
+// 予約した保存を実際に流す。閉じる直前にも呼ぶので keepalive を渡せる
+async function flushBoard(keepalive){
+  clearTimeout(bdTimer); bdTimer = null;
+  if (!board || bdVer === bdSaved) return;
+  if (!pin || !boardSha) { bdSay('この端末の中だけに残しています'); return; }
+
+  const run = async () => {
+    if (bdVer === bdSaved) return;
+    const v = bdVer;
+    const text = JSON.stringify({ updated: stampLocal(), cards: board.cards }, null, 2) + '\n';
+    try {
+      const res = await fetch(`${API}?file=board`, {
+        method:'PUT', keepalive: !!keepalive,
+        headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
+        body: JSON.stringify({ text, sha: boardSha, message: bdMsg || 'board: 更新' })
+      });
+      if (res.status === 409) throw new Error('conflict');
+      if (!res.ok) throw await fail(res);
+      boardSha = (await res.json()).sha;
+      bdSaved = v;                       // 途中でまた直していたら、次のぶんが残る
+      bdMsg = '';
+      keepBoard();
+      bdSay('保存しました');
+      setTimeout(() => { if (bdVer === bdSaved) bdSay(''); }, 1600);
+    } catch (e) {
+      if (e.message === 'conflict') {
+        bdSay('他で更新されていたので読み直しました', true);
+        await loadBoard();
+      } else {
+        bdSay(e.message, true);          // 端末の中には残っているので、次の機会に上がる
+      }
+    }
+  };
+  bdBusy = (bdBusy || Promise.resolve()).then(run, run);
+  return bdBusy;
+}
+
+// textarea を中身の高さに合わせる。枠を出さないので、ただの文章に見える
+function grow(ta){
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight || 22) + 'px';
+}
+
+// 開くカードを決める。-1 で全部畳む
+function bdOpen(i){
+  const cards = [...document.querySelectorAll('#bd-stack .bd-card')];
+  if (!cards.length) { bdFocus = -1; return; }
+  bdFocus = i == null || i < 0 ? -1 : Math.min(i, cards.length - 1);
+  cards.forEach((n, k) => n.classList.toggle('open', k === bdFocus));
+  if (bdFocus < 0) return;
+  const n = cards[bdFocus];
+  n.querySelectorAll('textarea.bd-v').forEach(grow);
+  const top = n.getBoundingClientRect().top + window.scrollY - 84;
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
+function bdCard(c, i){
+  const node = el('article','bd-card');
+  node.style.setProperty('--c', PALETTE[i % PALETTE.length]);
+  node.dataset.id = c.id || '';
+
+  const head = el('div','bd-head');
+  head.setAttribute('role','button');
+
+  let title;
+  if (pin) {
+    title = document.createElement('input');
+    title.className = 'bd-title';
+    title.value = c.title || '';
+    title.placeholder = '見出し';
+    title.addEventListener('input', () => {
+      c.title = title.value;
+      touchBoard(`board: 見出しを更新（${title.value.trim() || '無題'}）`);
+    });
+  } else {
+    title = el('span','bd-title', c.title || '(無題)');
+  }
+  head.append(title, el('span','bd-when', shortDate(c.created)), el('span','bd-chev'));
+  head.addEventListener('click', e => {
+    if (e.target === title && node.classList.contains('open')) return;   // 見出しを打っている
+    bdOpen(node.classList.contains('open') ? -1 : i);
+  });
+  node.append(head);
+
+  const fields = el('div','bd-fields');
+  for (const f of BD_FIELDS) {
+    const val = c[f.k] || '';
+    if (!pin && !val) continue;                    // 読むだけなら空欄は出さない
+    const box = el('div','bd-f');
+    box.append(el('span','bd-k', f.label));
+    if (pin) {
+      const ta = document.createElement('textarea');
+      ta.className = 'bd-v';
+      ta.rows = 1;
+      ta.value = val;
+      ta.placeholder = f.hint;
+      ta.setAttribute('aria-label', f.label);
+      ta.addEventListener('input', () => {
+        c[f.k] = ta.value;
+        grow(ta);
+        touchBoard(`board: ${f.label} を更新（${(c.title || '').trim() || '無題'}）`);
+      });
+      box.append(ta);
+    } else {
+      box.append(el('div','bd-v', val));
+    }
+    fields.append(box);
+  }
+
+  const meta = el('div','bd-meta');
+  meta.append(el('span', null, '作成日 ' + (c.created || '—')));
+  if (pin) {
+    const del = el('button','bd-del','削除');
+    del.addEventListener('click', () => {
+      const name = (c.title || '').trim() || '無題';
+      if (!confirm(`「${name}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
+      board.cards = board.cards.filter(x => x !== c);
+      bdFocus = -1;
+      renderBoard();
+      touchBoard(`board: 削除（${name}）`);
+      flushBoard();                                 // 消したものは待たせずに書く
+    });
+    meta.append(del);
+  }
+  fields.append(meta);
+
+  const body = el('div','bd-body');
+  const inner = el('div','bd-inner');
+  inner.append(fields);
+  body.append(inner);
+  node.append(body);
+  return node;
+}
+
+function renderBoard(){
+  const stack = document.getElementById('bd-stack');
+  const count = document.getElementById('bd-count');
+  stack.textContent = '';
+  document.getElementById('bd-add').hidden = !pin || !board;
+
+  if (!board) {
+    count.textContent = '';
+    stack.append(el('div', boardErr ? 'err' : 'bd-empty',
+      boardErr ? `board.json を読み込めませんでした（${boardErr}）。` : '読み込み中…'));
+    return;
+  }
+  count.textContent = board.cards.length ? `${board.cards.length}枚` : '';
+  if (!board.cards.length) {
+    stack.append(el('div','bd-empty',
+      pin ? '「＋ カード」から書き始められます。' : 'まだ何も書かれていません。'));
+    return;
+  }
+  board.cards.forEach((c, i) => stack.append(bdCard(c, i)));
+  stack.querySelectorAll('textarea.bd-v').forEach(grow);
+  // 開いていたカードは開いたまま。ここでは画面を動かさない（bdOpen は動かす）
+  bdFocus = bdFocus < 0 ? -1 : Math.min(bdFocus, board.cards.length - 1);
+  stack.querySelectorAll('.bd-card').forEach((n, k) => n.classList.toggle('open', k === bdFocus));
+}
+
+// 端末に残っていた下書き。上げそこねた分があればここで拾って上げ直す
+function restoreDraft(){
+  bdVer = bdSaved = 0;
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(BOARD_KEY) || 'null'); } catch (e) { /* 壊れていたら捨てる */ }
+  if (!d || !Array.isArray(d.cards)) return;
+  // 同じ版から書き始めた下書きだけ生かす。別のところで更新されていたら向こうが正しい
+  if (!boardSha || d.sha !== boardSha) { try { localStorage.removeItem(BOARD_KEY); } catch (e) {} return; }
+  if (board) board.cards = d.cards;
+  if (!d.dirty) return;
+  bdVer = 1;
+  bdSay('未保存の下書きを上げます');
+  setTimeout(() => flushBoard(), 300);
+}
+
+async function loadBoard(){
+  boardErr = '';
+  boardSha = null;
+  let got = null;
+
+  // 編集できる状態なら API 経由。書き戻すのに SHA が要る
+  if (pin) {
+    try {
+      const res = await fetch(`${API}?file=board&t=${Date.now()}`, {
+        headers: { 'X-Pin': pin }, cache:'no-store'
+      });
+      if (!res.ok) throw await fail(res);
+      const json = await res.json();
+      boardSha = json.sha;
+      got = JSON.parse(json.text);
+    } catch (e) {
+      boardErr = e.message;        // API が駄目でも、下の公開ファイルなら読める
+    }
+  }
+
+  if (!got) {
+    try {
+      const res = await fetch(`${BOARD_SRC}?t=${Date.now()}`, { cache:'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      got = await res.json();
+      boardErr = '';               // 見るだけならこれで足りる（書けはしない）
+    } catch (e) {
+      boardErr = boardErr || e.message;
+    }
+  }
+
+  board = got ? { updated: got.updated || null,
+                  cards: Array.isArray(got.cards) ? got.cards : [] } : null;
+  restoreDraft();
+  renderBoard();
+}
+
+/* ---------- ページの送り ---------- */
+
+const VIEWS = ['days', 'week', 'board'];
 const deck = () => document.getElementById('deck');
-const panes = () => [document.getElementById('pane-days'), document.getElementById('pane-week')];
-const paneIndex = () => (view === 'week' ? 1 : 0);
+const panes = () => VIEWS.map(v => document.getElementById('pane-' + v));
+const paneIndex = () => Math.max(0, VIEWS.indexOf(view));
 let sliding = false;
 
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
-  const isWeek = view === 'week';
-  document.getElementById('quick').hidden = isWeek || !pin;
-  document.getElementById('h1').textContent = isWeek ? '週の時間割' : '3日間タスク';
-  document.getElementById('v-days').setAttribute('aria-pressed', String(!isWeek));
-  document.getElementById('v-week').setAttribute('aria-pressed', String(isWeek));
+  document.getElementById('quick').hidden = view !== 'days' || !pin;
+  document.getElementById('h1').textContent =
+    view === 'week' ? '週の時間割' : view === 'board' ? 'ボード' : '3日間タスク';
+  VIEWS.forEach(k => document.getElementById('v-' + k)
+    .setAttribute('aria-pressed', String(k === view)));
   try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 保存できなくても動く */ }
-  if (isWeek && !week) loadWeek();
+  if (view === 'week' && !week) loadWeek();
+  if (view === 'board' && !board) loadBoard();
 }
 
-// 動かし終わったあとの静かな状態。使っていない側は畳んでおく
+// 動かし終わったあとの静かな状態。使っていない面は畳んでおく
 function rest(index){
   const d = deck();
   panes().forEach((p, i) => p.classList.toggle('off', i !== index));
@@ -1216,10 +1580,11 @@ function rest(index){
   sliding = false;
 }
 
-// 両方を並べて、指やアニメーションで動かせる状態にする
+// 隣を並べて、指やアニメーションで動かせる状態にする。
+// 全部出すと一番高い面に合わせて背が伸びるので、隣までにとどめる
 function live(from){
   const d = deck();
-  panes().forEach(p => p.classList.remove('off'));
+  panes().forEach((p, i) => p.classList.toggle('off', Math.abs(i - from) > 1));
   d.classList.add('live');
   d.style.transition = 'none';
   d.style.transform = `translateX(${-100 * from}%)`;
@@ -1298,7 +1663,7 @@ function setView(next){
       live(from);
     }
     if (e.cancelable) e.preventDefault();           // 縦スクロールを止める
-    const end = (from === 0 && dx > 0) || (from === 1 && dx < 0);
+    const end = (from === 0 && dx > 0) || (from === VIEWS.length - 1 && dx < 0);
     dragTo(from, end ? dx / 3 : dx);                // 端では重くする
   }, { passive: false });
 
@@ -1307,10 +1672,53 @@ function setView(next){
     lock = 'no';
     const dx = e.changedTouches[0].clientX - x0;
     const go = Math.abs(dx) > width / 4;
-    const index = go ? (dx < 0 ? Math.min(from + 1, 1) : Math.max(from - 1, 0)) : from;
+    const last = VIEWS.length - 1;
+    const index = go ? (dx < 0 ? Math.min(from + 1, last) : Math.max(from - 1, 0)) : from;
     sliding = true;
-    if (index !== from) { view = index === 1 ? 'week' : 'days'; viewState(); }
+    if (index !== from) { view = VIEWS[index]; viewState(); }
     settle(from, index);
+  }, { passive: true });
+})();
+
+/* ---------- ボードを上下になぞって送る ----------
+   見出しの帯の上でなぞると、次のカードが開く。中身の上では拾わない
+   （長い文章を読むための縦スクロールを取り上げないため）。 */
+(() => {
+  const WAKE = 8, GO = 34, SLOPE = 1.2;
+  let x0 = 0, y0 = 0, lock = 'no';
+
+  const claim = t => {
+    if (view !== 'board' || sliding || !board || !board.cards.length) return false;
+    const n = t.target;
+    if (!n || !n.closest) return false;
+    if (n.closest('textarea, input, .bd-del')) return false;
+    if (n.closest('.bd-head')) return true;
+    // 画面に収まっていて転がすものが無いなら、どこでなぞっても送りにする
+    return document.documentElement.scrollHeight <= window.innerHeight + 4;
+  };
+
+  addEventListener('touchstart', e => {
+    lock = (e.touches.length === 1 && claim(e.touches[0])) ? null : 'no';
+    if (lock === null) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
+  }, { passive: true });
+
+  addEventListener('touchmove', e => {
+    if (lock === 'no' || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+    if (lock === null) {                            // まだ縦か横か決めていない
+      if (Math.abs(dx) < WAKE && Math.abs(dy) < WAKE) return;
+      if (Math.abs(dy) <= Math.abs(dx) * SLOPE) { lock = 'no'; return; }
+      lock = 'y';
+    }
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  addEventListener('touchend', e => {
+    if (lock !== 'y') { lock = 'no'; return; }
+    lock = 'no';
+    const dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dy) < GO || !board) return;
+    bdOpen(dy < 0 ? Math.min(bdFocus + 1, board.cards.length - 1) : bdFocus - 1);
   }, { passive: true });
 })();
 
@@ -1370,6 +1778,7 @@ document.getElementById('pin-save').addEventListener('click', async () => {
     if (!remember(v)) say('この端末には覚えさせられませんでした', true);
     document.getElementById('pin').value = '';
     document.getElementById('panel').hidden = true;
+    board = null; boardSha = null;         // SHA を取り直す。ここから書けるようになる
     showMode();
     say('編集できます');
     await load();
@@ -1380,8 +1789,10 @@ document.getElementById('pin-save').addEventListener('click', async () => {
   }
 });
 document.getElementById('pin-clear').addEventListener('click', async () => {
+  await flushBoard();                // 打った分を上げてから、書けない状態に落とす
   try { localStorage.removeItem(PIN_KEY); } catch (e) {}
-  pin = null; sha = null;
+  try { localStorage.removeItem(BOARD_KEY); } catch (e) {}
+  pin = null; sha = null; board = null; boardSha = null;
   document.getElementById('pin').value = '';
   showMode();
   render(parse(lines.join('\n')));   // 読み込みを待たずに操作を止める
@@ -1411,29 +1822,48 @@ setInterval(() => {
   line.style.top = `calc(var(--wh) * ${(now.getHours() * 60 + now.getMinutes() - h0 * 60) / 60})`;
 }, 60000);
 
-document.getElementById('v-days').addEventListener('click', () => setView('days'));
-document.getElementById('v-week').addEventListener('click', () => setView('week'));
+VIEWS.forEach(k => document.getElementById('v-' + k)
+  .addEventListener('click', () => setView(k)));
 document.getElementById('wk-detail').addEventListener('click', cycleStatus);
 document.getElementById('wk-print').addEventListener('click', () => window.print());
 
-
-document.getElementById('reload').addEventListener('click', () => {
-  say('');
-  view === 'week' ? loadWeek() : load();
+document.getElementById('bd-add').addEventListener('click', () => {
+  if (!pin || !board) return;
+  board.cards.push({ id: 'c' + Date.now().toString(36), title: '', created: ymd(new Date()) });
+  bdFocus = board.cards.length - 1;
+  renderBoard();
+  bdOpen(bdFocus);
+  const box = document.querySelectorAll('#bd-stack .bd-card')[bdFocus];
+  const title = box && box.querySelector('input.bd-title');
+  if (title) title.focus();
+  touchBoard('board: カードを追加');
 });
+
+// 読み直し。ボードは打った分を先に上げてから取り直す
+const refresh = async () => {
+  if (view === 'week') return loadWeek();
+  if (view !== 'board') return load();
+  await flushBoard();
+  return loadBoard();
+};
+
+document.getElementById('reload').addEventListener('click', () => { say(''); refresh(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || editing) return;
+  if (document.hidden) { flushBoard(true); return; }   // 閉じる前に打った分を出す
+  if (editing) return;
   checkVersion();                    // 開き直したときに、古ければ自分で入れ替わる
-  view === 'week' ? loadWeek() : load();
+  refresh();
 });
+addEventListener('pagehide', () => flushBoard(true));
 
-// 開く画面。URL の ?v=week が最優先、次に前回開いていた方
+// 開く画面。URL の ?v=week / ?v=board が最優先、次に前回開いていた方
 function loadView(){
   let fromUrl = null;
   try { fromUrl = new URL(location.href).searchParams.get('v'); } catch (e) {}
   let saved = null;
   try { saved = localStorage.getItem(VIEW_KEY); } catch (e) {}
-  view = (fromUrl || saved) === 'week' ? 'week' : 'days';
+  const want = fromUrl || saved;
+  view = VIEWS.includes(want) ? want : 'days';
 }
 
 loadView();
