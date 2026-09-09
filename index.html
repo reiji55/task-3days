@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-09-board2">
+<meta name="app-version" content="2026-09-09-board3">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -329,75 +329,115 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 .ev.gone-all.done{border-left-color:#7fae8f}
 .ev.gone-all.miss{border-left-color:#e08a84}
 
-/* ---- ボード（やり方を書き溜めておく読み物） ---- */
+/* ---- ボード（やり方を書き溜めておく読み物） ----
+   一覧は色付きのカードを重ねて置き、タップすると全画面の詳細になる。
+   詳細は上半分がカードの色、下から白い面がせり上がって中身を見せる。 */
 .bd-bar{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px;color:var(--ink-3)}
 .bd-count{font-variant-numeric:tabular-nums}
 #bd-state{margin-left:auto;font-variant-numeric:tabular-nums}
 #bd-state.bad{color:var(--warn)}
 #bd-add[hidden]{display:none}
-#bd-stack{display:flex;flex-direction:column;gap:9px}
+#bd-stack{display:flex;flex-direction:column;padding-bottom:6px}
 
+/* カードは重ねる。下の1枚が覗いていることで「まだ続く」と分かる */
 .bd-card{
-  background:var(--panel); border:1px solid var(--line); border-radius:16px;
-  border-left:3px solid var(--c,var(--line));
-  box-shadow:var(--shadow); overflow:hidden;
-  transition:box-shadow .26s ease, background-color .26s ease;
+  position:relative;border-radius:24px;padding:24px 20px 34px;
+  background:var(--c);color:#14130f;cursor:pointer;
+  box-shadow:0 -2px 10px -4px rgba(0,0,0,.22);
 }
-.bd-card.open{
-  background:color-mix(in srgb, var(--c) 5%, var(--panel));
-  box-shadow:0 1px 2px rgba(0,0,0,.05), 0 18px 36px -22px rgba(0,0,0,.4);
+.bd-card + .bd-card{margin-top:-16px}
+.bd-card:active{filter:brightness(.97)}
+.bd-when{font-size:12px;font-weight:600;color:rgba(0,0,0,.5);font-variant-numeric:tabular-nums}
+.bd-name{
+  margin-top:13px;font-size:24px;font-weight:700;line-height:1.24;
+  letter-spacing:-.01em;word-break:break-word;
 }
-.bd-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer}
-.bd-title{
-  flex:1; min-width:0; margin:0; padding:0; border:0; border-radius:5px;
-  font:inherit; font-size:15.5px; font-weight:650; line-height:1.4;
-  color:var(--ink); background:transparent;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.bd-card:not(.open) .bd-title{pointer-events:none}   /* 畳んでいる間は見出しごと叩ける */
-input.bd-title:focus{outline:none;background:var(--line-soft);box-shadow:0 0 0 5px var(--line-soft)}
-input.bd-title::placeholder{color:var(--ink-3);font-weight:500}
-.bd-when{flex:none;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.bd-chev{
-  position:relative;flex:none;width:8px;height:8px;margin:-3px 3px 0 0;
-  border-right:1.6px solid var(--ink-3);border-bottom:1.6px solid var(--ink-3);
-  transform:rotate(45deg);transition:transform .3s cubic-bezier(.25,.8,.35,1);
-}
-.bd-chev::before{content:"";position:absolute;inset:-15px}   /* 指で押せる広さにする */
-.bd-card.open .bd-chev{transform:rotate(-135deg);margin-top:3px}
+.bd-empty{color:var(--ink-3);font-size:13px;padding:10px 2px}
 
-/* 0fr → 1fr で高さを測らずに開く。中身の量が変わっても書き直さなくてよい */
-.bd-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s cubic-bezier(.25,.8,.35,1)}
-.bd-card.open .bd-body{grid-template-rows:1fr}
-.bd-inner{overflow:hidden;min-height:0;opacity:0;transition:opacity .2s ease}
-.bd-card.open .bd-inner{opacity:1;transition-delay:.07s}
-.bd-fields{padding:12px 15px 15px;border-top:1px solid var(--line-soft)}
-.bd-f{margin:0 0 14px}
-.bd-k{
-  display:block;font-size:9.5px;font-weight:700;letter-spacing:.14em;
-  color:color-mix(in srgb, var(--c) 55%, var(--ink-3));margin-bottom:4px;
+/* ---- 詳細（全画面） ---- */
+#bd-detail{
+  --rest:54%;                       /* 白い面が休んでいるときの、下からの高さ */
+  position:fixed;inset:0;z-index:40;overflow:hidden;
+  background:var(--c,#eee);color:#14130f;
+  transform:translateY(100%);
+  transition:transform .34s cubic-bezier(.25,.8,.35,1);
 }
-.bd-v{font-size:14px;line-height:1.72;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+#bd-detail.on{transform:none}
+#bd-detail[hidden]{display:none}
+#bd-detail.slide .bd-top,
+#bd-detail.slide .bd-rows{transition:opacity .16s ease;opacity:0}
+.bd-top{padding:calc(10px + env(safe-area-inset-top)) 22px 0}
+.bd-back{
+  appearance:none;border:0;background:transparent;cursor:pointer;
+  width:38px;height:38px;margin-left:-10px;padding:0;
+  display:grid;place-items:center;color:#14130f;
+}
+.bd-back i{
+  display:block;width:11px;height:11px;margin-left:4px;
+  border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(45deg);
+}
+.bd-big{
+  display:block;width:100%;margin:6px 0 0;padding:0;border:0;background:transparent;
+  resize:none;overflow:hidden;
+  font:inherit;font-size:32px;font-weight:700;line-height:1.18;letter-spacing:-.02em;
+  color:#14130f;
+}
+.bd-big::placeholder{color:rgba(0,0,0,.35)}
+.bd-big:focus{outline:none}
+.bd-rows{margin-top:22px;font-size:13px}
+.bd-row{display:flex;gap:14px;padding:5px 0}
+.bd-row span{color:rgba(0,0,0,.52)}
+.bd-row b{margin-left:auto;font-weight:500;font-variant-numeric:tabular-nums}
+.bd-nav{
+  position:absolute;left:0;right:0;bottom:var(--rest);margin-bottom:11px;
+  display:flex;justify-content:center;gap:5px;pointer-events:none;
+}
+.bd-nav i{width:5px;height:5px;border-radius:50%;background:rgba(0,0,0,.22)}
+.bd-nav i.on{background:rgba(0,0,0,.6)}
+
+/* 下からせり上がる白い面。--sheet が上端の位置 */
+#bd-sheet{
+  position:absolute;left:0;right:0;top:0;height:100%;
+  display:flex;flex-direction:column;
+  background:var(--panel);color:var(--ink);
+  border-radius:26px 26px 0 0;
+  box-shadow:0 -12px 34px -20px rgba(0,0,0,.55);
+  transform:translateY(var(--sheet,46%));
+  transition:transform .34s cubic-bezier(.25,.8,.35,1);
+}
+#bd-sheet.drag{transition:none}
+.bd-grip{flex:none;padding:10px 0 6px;display:grid;place-items:center;cursor:grab}
+.bd-grip i{display:block;width:38px;height:4px;border-radius:2px;background:var(--line)}
+.bd-fields{
+  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:6px 20px calc(24px + env(safe-area-inset-bottom));
+}
+.bd-f{margin:0 0 20px}
+.bd-k{
+  display:inline-block;font-size:10px;font-weight:700;letter-spacing:.15em;
+  color:var(--ink-2);margin-bottom:7px;
+  border-bottom:2.5px solid var(--c);padding-bottom:2px;
+}
+.bd-v{font-size:14.5px;line-height:1.75;color:var(--ink);white-space:pre-wrap;word-break:break-word}
 textarea.bd-v{
   display:block;width:calc(100% + 12px);margin-left:-6px;resize:none;overflow:hidden;
-  font:inherit;font-size:14px;line-height:1.72;color:var(--ink-2);
+  font:inherit;font-size:14.5px;line-height:1.75;color:var(--ink);
   background:transparent;border:0;border-radius:7px;padding:1px 6px;
 }
-textarea.bd-v:focus{outline:none;background:var(--line-soft);color:var(--ink)}
+textarea.bd-v:focus{outline:none;background:var(--line-soft)}
 textarea.bd-v::placeholder{color:var(--ink-3)}
-.bd-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3);
-  font-variant-numeric:tabular-nums}
 .bd-del{
   appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink-3);
-  font:inherit;font-size:11px;padding:2px 10px;border-radius:999px;cursor:pointer;margin-left:auto;
+  font:inherit;font-size:11px;padding:3px 12px;border-radius:999px;cursor:pointer;
 }
 .bd-del:active{color:var(--warn);border-color:var(--warn)}
-.bd-empty{color:var(--ink-3);font-size:13px;padding:10px 2px}
 
 /* ---- 印刷（A4横1枚） ---- */
 @media print{
   html,body{background:#fff;color:#000}
-  header,#bar,#panel,#quick,.note,#wk-detail,.seg,.reload,.sub,#wk-print{display:none !important}
+  header,#bar,#panel,#quick,.note,#wk-detail,.seg,.reload,.sub,#wk-print,
+  #bd-detail{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
   #pane-days,#pane-board{display:none !important}
@@ -498,11 +538,27 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
         <div id="bd-stack"></div>
       </section>
 
-      <p class="note" id="bd-foot">上下になぞると、1枚ずつ開きます。<br>
+      <p class="note" id="bd-foot">カードをタップすると開きます。<br>
         書いたことは <code>board.json</code> に残り、Claude からも読めます。</p>
     </div>
   </div></div>
 </div>
+
+<!-- 詳細。全画面なので .wrap の外に出す（#deck に transform が掛かっていると
+     position:fixed がそちらを基準にしてしまう） -->
+<section id="bd-detail" hidden aria-label="ボードの詳細">
+  <div class="bd-top" id="bd-top">
+    <button class="bd-back" id="bd-back" aria-label="一覧へ戻る"><i></i></button>
+    <textarea class="bd-big" id="bd-big" rows="1" placeholder="見出し"
+              enterkeyhint="done" autocapitalize="off" spellcheck="false"></textarea>
+    <div class="bd-rows" id="bd-rows"></div>
+  </div>
+  <div class="bd-nav" id="bd-nav"></div>
+  <div id="bd-sheet">
+    <div class="bd-grip" id="bd-grip" aria-hidden="true"><i></i></div>
+    <div class="bd-fields" id="bd-fields"></div>
+  </div>
+</section>
 
 <script>
 // 書き込みは Vercel 側の API を通す。GitHub のトークンはあちらにあり、
@@ -1295,11 +1351,12 @@ const BD_FIELDS = [
   { k:'purpose', label:'PURPOSE', hint:'なぜやるのか' },
   { k:'detail',  label:'DETAIL',  hint:'やり方・手順・覚え書き' }
 ];
+// 札の色。どれも明るいので、上に乗る字は明暗どちらでも黒のまま
+const BD_COLORS = ['#8beac9','#ffe142','#d07ae5','#ffb59c','#a8c6ff','#c9e86b'];
 
 let board = null;         // { updated, cards } まだ読んでいなければ null
 let boardSha = null;      // board.json の blob SHA。書き込みに要る
 let boardErr = '';
-let bdFocus = -1;         // 開いているカード。-1 は全部畳んだ状態
 let bdVer = 0, bdSaved = 0;   // 直した回数と、書き終えた回数。ずれていたら未保存
 let bdTimer = null, bdBusy = null, bdMsg = '';
 
@@ -1384,94 +1441,16 @@ function grow(ta){
   ta.style.height = (ta.scrollHeight || 22) + 'px';
 }
 
-// 開くカードを決める。-1 で全部畳む
-function bdOpen(i){
-  const cards = [...document.querySelectorAll('#bd-stack .bd-card')];
-  if (!cards.length) { bdFocus = -1; return; }
-  bdFocus = i == null || i < 0 ? -1 : Math.min(i, cards.length - 1);
-  cards.forEach((n, k) => n.classList.toggle('open', k === bdFocus));
-  if (bdFocus < 0) return;
-  const n = cards[bdFocus];
-  n.querySelectorAll('textarea.bd-v').forEach(grow);
-  const top = n.getBoundingClientRect().top + window.scrollY - 84;
-  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-}
-
+// 一覧のカード1枚。日付と見出しだけを、色の付いた札に載せる
 function bdCard(c, i){
   const node = el('article','bd-card');
-  node.style.setProperty('--c', PALETTE[i % PALETTE.length]);
+  node.style.setProperty('--c', BD_COLORS[i % BD_COLORS.length]);
+  node.style.zIndex = String(i + 1);            // 後のカードが手前に重なる
   node.dataset.id = c.id || '';
-
-  const head = el('div','bd-head');
-  head.setAttribute('role','button');
-
-  let title;
-  if (pin) {
-    title = document.createElement('input');
-    title.className = 'bd-title';
-    title.value = c.title || '';
-    title.placeholder = '見出し';
-    title.addEventListener('input', () => {
-      c.title = title.value;
-      touchBoard(`board: 見出しを更新（${title.value.trim() || '無題'}）`);
-    });
-  } else {
-    title = el('span','bd-title', c.title || '(無題)');
-  }
-  head.append(title, el('span','bd-when', shortDate(c.created)), el('span','bd-chev'));
-  head.addEventListener('click', e => {
-    if (e.target === title && node.classList.contains('open')) return;   // 見出しを打っている
-    bdOpen(node.classList.contains('open') ? -1 : i);
-  });
-  node.append(head);
-
-  const fields = el('div','bd-fields');
-  for (const f of BD_FIELDS) {
-    const val = c[f.k] || '';
-    if (!pin && !val) continue;                    // 読むだけなら空欄は出さない
-    const box = el('div','bd-f');
-    box.append(el('span','bd-k', f.label));
-    if (pin) {
-      const ta = document.createElement('textarea');
-      ta.className = 'bd-v';
-      ta.rows = 1;
-      ta.value = val;
-      ta.placeholder = f.hint;
-      ta.setAttribute('aria-label', f.label);
-      ta.addEventListener('input', () => {
-        c[f.k] = ta.value;
-        grow(ta);
-        touchBoard(`board: ${f.label} を更新（${(c.title || '').trim() || '無題'}）`);
-      });
-      box.append(ta);
-    } else {
-      box.append(el('div','bd-v', val));
-    }
-    fields.append(box);
-  }
-
-  const meta = el('div','bd-meta');
-  meta.append(el('span', null, '作成日 ' + (c.created || '—')));
-  if (pin) {
-    const del = el('button','bd-del','削除');
-    del.addEventListener('click', () => {
-      const name = (c.title || '').trim() || '無題';
-      if (!confirm(`「${name}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
-      board.cards = board.cards.filter(x => x !== c);
-      bdFocus = -1;
-      renderBoard();
-      touchBoard(`board: 削除（${name}）`);
-      flushBoard();                                 // 消したものは待たせずに書く
-    });
-    meta.append(del);
-  }
-  fields.append(meta);
-
-  const body = el('div','bd-body');
-  const inner = el('div','bd-inner');
-  inner.append(fields);
-  body.append(inner);
-  node.append(body);
+  node.setAttribute('role','button');
+  node.append(el('div','bd-when', c.created || ''),
+              el('div','bd-name', (c.title || '').trim() || '(無題)'));
+  node.addEventListener('click', () => bdShow(i));
   return node;
 }
 
@@ -1494,11 +1473,139 @@ function renderBoard(){
     return;
   }
   board.cards.forEach((c, i) => stack.append(bdCard(c, i)));
-  stack.querySelectorAll('textarea.bd-v').forEach(grow);
-  // 開いていたカードは開いたまま。ここでは画面を動かさない（bdOpen は動かす）
-  bdFocus = bdFocus < 0 ? -1 : Math.min(bdFocus, board.cards.length - 1);
-  stack.querySelectorAll('.bd-card').forEach((n, k) => n.classList.toggle('open', k === bdFocus));
 }
+
+/* ---------- ボードの詳細（全画面） ----------
+   カードの色がそのまま画面いっぱいに広がり、下から白い面がせり上がる。
+   白い面は指について動き、離すと近い方に吸い付く。 */
+
+const PEEK = 46, FULL = 20;      // 白い面の上端。画面の高さに対する %
+let bdAt = -1;                   // 開いているカード。-1 は一覧
+let bdUp = false;                // 白い面が上まで来ているか
+
+const sheet = () => document.getElementById('bd-sheet');
+const detail = () => document.getElementById('bd-detail');
+
+function sheetSet(up){
+  bdUp = !!up;
+  sheet().classList.remove('drag');
+  sheet().style.setProperty('--sheet', (bdUp ? FULL : PEEK) + '%');
+}
+
+// 詳細の中身を入れ替える。カードを行き来しても作り直さない
+function bdFill(i){
+  const c = board.cards[i];
+  if (!c) return;
+  bdAt = i;
+  const box = detail();
+  box.style.setProperty('--c', BD_COLORS[i % BD_COLORS.length]);
+
+  const big = document.getElementById('bd-big');
+  big.value = c.title || '';
+  big.readOnly = !pin;
+  big.oninput = () => {
+    c.title = big.value;
+    grow(big);
+    touchBoard(`board: 見出しを更新（${big.value.trim() || '無題'}）`);
+  };
+
+  const rows = document.getElementById('bd-rows');
+  rows.textContent = '';
+  const row = el('div','bd-row');
+  row.append(el('span', null, '作成日'), el('b', null, c.created || '—'));
+  rows.append(row);
+
+  const fields = document.getElementById('bd-fields');
+  fields.textContent = '';
+  for (const f of BD_FIELDS) {
+    const val = c[f.k] || '';
+    if (!pin && !val) continue;                  // 読むだけなら空欄は出さない
+    const wrap = el('div','bd-f');
+    wrap.append(el('span','bd-k', f.label));
+    if (pin) {
+      const ta = document.createElement('textarea');
+      ta.className = 'bd-v';
+      ta.rows = 1;
+      ta.value = val;
+      ta.placeholder = f.hint;
+      ta.setAttribute('aria-label', f.label);
+      ta.addEventListener('input', () => {
+        c[f.k] = ta.value;
+        grow(ta);
+        touchBoard(`board: ${f.label} を更新（${(c.title || '').trim() || '無題'}）`);
+      });
+      wrap.append(ta);
+    } else {
+      wrap.append(el('div','bd-v', val));
+    }
+    fields.append(wrap);
+  }
+  if (!pin && !fields.childNodes.length) {
+    fields.append(el('div','bd-empty','まだ何も書かれていません。'));
+  }
+  if (pin) {
+    const foot = el('div','bd-f');
+    const del = el('button','bd-del','このカードを削除');
+    del.addEventListener('click', () => {
+      const name = (c.title || '').trim() || '無題';
+      if (!confirm(`「${name}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
+      board.cards = board.cards.filter(x => x !== c);
+      bdHide();
+      renderBoard();
+      touchBoard(`board: 削除（${name}）`);
+      flushBoard();                              // 消したものは待たせずに書く
+    });
+    foot.append(del);
+    fields.append(foot);
+  }
+
+  const nav = document.getElementById('bd-nav');
+  nav.textContent = '';
+  if (board.cards.length > 1) {
+    board.cards.forEach((_, k) => nav.append(el('i', k === i ? 'on' : null)));
+  }
+
+  fields.scrollTop = 0;
+  requestAnimationFrame(() => {
+    grow(big);
+    fields.querySelectorAll('textarea.bd-v').forEach(grow);
+  });
+}
+
+function bdShow(i){
+  if (!board || !board.cards[i]) return;
+  bdFill(i);
+  const box = detail();
+  box.hidden = false;
+  sheetSet(false);
+  box.offsetHeight;                              // ここまでを確定させてから動かす
+  box.classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+
+function bdHide(){
+  const box = detail();
+  box.classList.remove('on');
+  bdAt = -1;
+  document.body.style.overflow = '';
+  setTimeout(() => { if (bdAt < 0) box.hidden = true; }, 360);
+  renderBoard();                                 // 見出しを直していたら一覧にも映す
+}
+
+// 隣のカードへ。横に払って1枚ずつ送る
+function bdGo(step){
+  if (!board || bdAt < 0) return;
+  const next = bdAt + step;
+  if (next < 0 || next >= board.cards.length) return;
+  const box = detail();
+  box.classList.add('slide');
+  setTimeout(() => {
+    bdFill(next);
+    sheetSet(false);
+    box.classList.remove('slide');
+  }, 160);
+}
+
 
 // 端末に残っていた下書き。上げそこねた分があればここで拾って上げ直す
 function restoreDraft(){
@@ -1554,6 +1661,8 @@ async function loadBoard(){
                   cards: Array.isArray(got.cards) ? got.cards : [] } : null;
   restoreDraft();
   renderBoard();
+  // 開いたまま読み直したときは、同じ位置の中身に差し替える
+  if (bdAt >= 0) { if (board && board.cards[bdAt]) bdFill(bdAt); else bdHide(); }
   // 読めたけれど書き戻せない状態（公開ファイルから読んだ）を先に伝えておく
   if (board && pin && !boardSha) bdSay('いまは端末の中にだけ残ります');
 }
@@ -1574,6 +1683,7 @@ function viewState(){
   VIEWS.forEach(k => document.getElementById('v-' + k)
     .setAttribute('aria-pressed', String(k === view)));
   try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 保存できなくても動く */ }
+  if (view !== 'board' && bdAt >= 0) bdHide();     // 他の面へ行くなら詳細は閉じる
   if (view === 'week' && !week) loadWeek();
   if (view === 'board' && !board) loadBoard();
 }
@@ -1653,7 +1763,8 @@ function setView(next){
   let x0 = 0, y0 = 0, lock = 'no', from = 0, width = 1;
 
   addEventListener('touchstart', e => {
-    if (sliding || e.touches.length !== 1) { lock = 'no'; return; }
+    // 詳細を開いている間は、横の指はそちらのもの（カードの送り）
+    if (sliding || bdAt >= 0 || e.touches.length !== 1) { lock = 'no'; return; }
     const t = e.touches[0];
     lock = (t.clientX > EDGE && t.clientX < innerWidth - EDGE) ? null : 'no';
     x0 = t.clientX; y0 = t.clientY;
@@ -1690,46 +1801,73 @@ function setView(next){
   }, { passive: true });
 })();
 
-/* ---------- ボードを上下になぞって送る ----------
-   見出しの帯の上でなぞると、次のカードが開く。中身の上では拾わない
-   （長い文章を読むための縦スクロールを取り上げないため）。 */
+/* ---------- ボードの詳細を指で動かす ----------
+   白い面は上下になぞって上げ下げする。色の付いた上半分では、
+   上へで面を上げ、下へで一覧に戻り、横へで隣のカードに移る。 */
 (() => {
-  const WAKE = 8, GO = 34, SLOPE = 1.2;
-  let x0 = 0, y0 = 0, lock = 'no';
+  const WAKE = 8, SLOPE = 1.2, GO = 46;
+  let x0 = 0, y0 = 0, base = 0, lock = 'no', from = '';
 
-  const claim = t => {
-    if (view !== 'board' || sliding || !board || !board.cards.length) return false;
-    const n = t.target;
-    if (!n || !n.closest) return false;
-    if (n.closest('textarea, input, .bd-del')) return false;
-    if (n.closest('.bd-head')) return true;
-    // 画面に収まっていて転がすものが無いなら、どこでなぞっても送りにする
-    return document.documentElement.scrollHeight <= window.innerHeight + 4;
-  };
+  const open = () => !detail().hidden && bdAt >= 0;
+  const height = () => detail().clientHeight || window.innerHeight;
+  const pct = () => (bdUp ? FULL : PEEK) / 100 * height();
+
+  // 白い面を指の位置に置く。行き過ぎは重くして端を知らせる
+  function put(px){
+    const lo = FULL / 100 * height(), hi = PEEK / 100 * height();
+    const y = px < lo ? lo - (lo - px) / 3 : px > hi ? hi + (px - hi) / 3 : px;
+    sheet().classList.add('drag');
+    sheet().style.setProperty('--sheet', y + 'px');
+  }
 
   addEventListener('touchstart', e => {
-    lock = (e.touches.length === 1 && claim(e.touches[0])) ? null : 'no';
-    if (lock === null) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
+    lock = 'no';
+    if (!open() || e.touches.length !== 1) return;
+    const n = e.touches[0].target;
+    if (!n || !n.closest) return;
+    if (n.closest('.bd-grip')) from = 'grip';
+    else if (n.closest('.bd-top')) from = 'top';
+    else return;                                  // 中身の上は本人のスクロールに任せる
+    if (from === 'top' && n.closest('textarea, input')) return;
+    lock = null;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    base = pct();
   }, { passive: true });
 
   addEventListener('touchmove', e => {
     if (lock === 'no' || e.touches.length !== 1) return;
     const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
-    if (lock === null) {                            // まだ縦か横か決めていない
+    if (lock === null) {
       if (Math.abs(dx) < WAKE && Math.abs(dy) < WAKE) return;
-      if (Math.abs(dy) <= Math.abs(dx) * SLOPE) { lock = 'no'; return; }
-      lock = 'y';
+      lock = Math.abs(dy) > Math.abs(dx) * SLOPE ? 'y'
+           : (from === 'top' ? 'x' : 'no');
+      if (lock === 'no') return;
     }
     if (e.cancelable) e.preventDefault();
+    if (lock === 'y') put(base + dy);
   }, { passive: false });
 
   addEventListener('touchend', e => {
-    if (lock !== 'y') { lock = 'no'; return; }
+    const was = lock;
     lock = 'no';
-    const dy = e.changedTouches[0].clientY - y0;
-    if (Math.abs(dy) < GO || !board) return;
-    bdOpen(dy < 0 ? Math.min(bdFocus + 1, board.cards.length - 1) : bdFocus - 1);
+    if (was !== 'y' && was !== 'x') return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+
+    if (was === 'x') {
+      if (Math.abs(dx) > GO) bdGo(dx < 0 ? 1 : -1);
+      return;
+    }
+    // 下へ払いきったら、面は下げるのではなく一覧へ戻す
+    if (!bdUp && dy > GO * 1.6) { sheetSet(false); return bdHide(); }
+    if (Math.abs(dy) < 26) return sheetSet(bdUp); // 迷いは元の位置へ
+    sheetSet(dy < 0);
   }, { passive: true });
+
+  // 帯をつまむ代わりに叩いても上げ下げできる
+  document.getElementById('bd-grip').addEventListener('click', () => sheetSet(!bdUp));
+  document.getElementById('bd-back').addEventListener('click', bdHide);
+  addEventListener('resize', () => { if (open()) sheetSet(bdUp); });
 })();
 
 /* ---------- 読み込み ---------- */
@@ -1840,12 +1978,9 @@ document.getElementById('wk-print').addEventListener('click', () => window.print
 document.getElementById('bd-add').addEventListener('click', () => {
   if (!pin || !board) return;
   board.cards.push({ id: 'c' + Date.now().toString(36), title: '', created: ymd(new Date()) });
-  bdFocus = board.cards.length - 1;
   renderBoard();
-  bdOpen(bdFocus);
-  const box = document.querySelectorAll('#bd-stack .bd-card')[bdFocus];
-  const title = box && box.querySelector('input.bd-title');
-  if (title) title.focus();
+  bdShow(board.cards.length - 1);        // 足したらそのまま見出しを打てる
+  document.getElementById('bd-big').focus();
   touchBoard('board: カードを追加');
 });
 
