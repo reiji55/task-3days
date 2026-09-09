@@ -107,7 +107,7 @@ test('接続してツール一覧が取れる', async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(t => t.name).sort(), [
       'add_tasks', 'get_tasks', 'get_week', 'move_tasks', 'remove_tasks',
-      'set_done', 'set_memo', 'set_week', 'update_task'
+      'set_done', 'set_memo', 'set_next', 'set_week', 'update_task'
     ]);
     for (const t of tools) {
       assert.ok(t.description && t.description.length > 10, t.name);

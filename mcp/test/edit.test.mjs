@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parse, findTask, formatTask, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks,
+  parse, findTask, formatTask, snapshot, setDone, setMemo, setNext, updateTask, addTasks, removeTasks, moveTasks,
   pruneEmptyDays
 } from '../lib/tasks.js';
 
@@ -380,4 +380,82 @@ test('prune: 何度かけても結果は同じ', () => {
   const once = prune(src).text;
   assert.equal(prune(once).text, once);
   assert.deepEqual(prune(once).pruned, []);
+});
+
+/* ---------- 引き継ぎ（Claude にやってほしいこと） ---------- */
+
+const withNext = '# 2026-08-28\n- [ ] 相談する\n  memo: 自分用のおぼえ書き\n  next: 論点を3つに絞って\n';
+
+test('parse: next 行を memo と別に拾う', () => {
+  const t = parse(withNext).days.get('2026-08-28')[0];
+  assert.equal(t.memo, '自分用のおぼえ書き');
+  assert.equal(t.next, '論点を3つに絞って');
+  assert.deepEqual(t.memoAt, [2]);
+  assert.deepEqual(t.nextAt, [3]);
+});
+
+test('parse: 表記ゆれと複数行', () => {
+  const t = parse('# 2026-08-28\n- [ ] あ\n  引き継ぎ: 一つ目\n  next：二つ目\n').days.get('2026-08-28')[0];
+  assert.equal(t.next, '一つ目\n二つ目');
+  assert.equal(t.memo, '', 'メモには入らない');
+});
+
+test('setNext: 無ければメモの下に足す', () => {
+  const r = setNext('# 2026-08-28\n- [ ] あ\n  memo: おぼえ書き\n', '2026-08-28#1', '調べておいて');
+  assert.equal(r.text, '# 2026-08-28\n- [ ] あ\n  memo: おぼえ書き\n  next: 調べておいて\n');
+});
+
+test('setNext: メモが無ければタスク行の下', () => {
+  const r = setNext('# 2026-08-28\n- [ ] あ\n', '2026-08-28#1', '頼んだ');
+  assert.equal(r.text, '# 2026-08-28\n- [ ] あ\n  next: 頼んだ\n');
+});
+
+test('setNext: 差し替え・複数行・削除。メモは巻き込まない', () => {
+  const one = setNext(withNext, '2026-08-28#1', '論点は2つでいい').text;
+  assert.ok(one.includes('  next: 論点は2つでいい'));
+  assert.ok(one.includes('  memo: 自分用のおぼえ書き'), 'メモはそのまま');
+  assert.equal(one.split('\n').length, withNext.split('\n').length);
+
+  const many = setNext(withNext, '2026-08-28#1', '一つ目\n二つ目').text;
+  assert.ok(many.includes('  next: 一つ目\n  next: 二つ目'));
+
+  const none = setNext(withNext, '2026-08-28#1', '').text;
+  assert.ok(!none.includes('next:'));
+  assert.ok(none.includes('  memo: 自分用のおぼえ書き'), 'メモは残る');
+
+  assert.equal(setNext(withNext, '2026-08-28#1', '論点を3つに絞って').text, withNext, '同じなら触らない');
+});
+
+test('setMemo: 引き継ぎを巻き込まない', () => {
+  const r = setMemo(withNext, '2026-08-28#1', '書き換えた').text;
+  assert.ok(r.includes('  memo: 書き換えた'));
+  assert.ok(r.includes('  next: 論点を3つに絞って'), '引き継ぎはそのまま');
+
+  const gone = setMemo(withNext, '2026-08-28#1', '').text;
+  assert.ok(!gone.includes('memo:'));
+  assert.ok(gone.includes('  next: 論点を3つに絞って'), 'メモを消しても引き継ぎは残る');
+});
+
+test('removeTasks / moveTasks: 引き継ぎも一緒に動く', () => {
+  const src = withNext + '- [ ] い\n';
+  assert.equal(removeTasks(src, ['2026-08-28#1']).text, '# 2026-08-28\n- [ ] い\n');
+
+  const moved = moveTasks(withNext, ['2026-08-28#1'], '2026-08-29').text;
+  const t = parse(moved).days.get('2026-08-29')[0];
+  assert.equal(t.next, '論点を3つに絞って', '引き継ぎを持っていく');
+  assert.equal(t.memo, '自分用のおぼえ書き');
+});
+
+test('addTasks: next 付きで足せる。並びは memo → next', () => {
+  const r = addTasks('# 2026-08-28\n', '2026-08-28',
+    [{ title: 'あ', memo: 'おぼえ書き', next: '下調べして' }]).text;
+  assert.equal(r, '# 2026-08-28\n- [ ] あ\n  memo: おぼえ書き\n  next: 下調べして\n');
+});
+
+test('snapshot: next を返す', () => {
+  const t = snapshot(parse(withNext).days, 'all').days[0].tasks[0];
+  assert.equal(t.next, '論点を3つに絞って');
+  assert.equal(t.memo, '自分用のおぼえ書き');
+  assert.equal(snapshot(parse('# 2026-08-28\n- [ ] あ\n').days, 'all').days[0].tasks[0].next, null,
+    '無ければ null');
 });

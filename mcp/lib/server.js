@@ -5,7 +5,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
-  parse, snapshot, setDone, setMemo, updateTask, addTasks, removeTasks, moveTasks,
+  parse, snapshot, setDone, setMemo, setNext, updateTask, addTasks, removeTasks, moveTasks,
   pruneEmptyDays
 } from './tasks.js';
 import { buildWeek, sameContent, summary as weekSummary } from './week.js';
@@ -28,6 +28,7 @@ const TASK_INPUT = z.object({
   type: z.string().optional().describe('型。"前進" または "ルーチン"'),
   project: z.string().optional().describe('プロジェクト名'),
   memo: z.string().optional().describe('メモ。改行で複数行'),
+  next: z.string().optional().describe('引き継ぎ。Claude にやってほしいこと'),
   done: z.boolean().optional().describe('最初から完了扱いにする場合のみ true')
 });
 
@@ -42,6 +43,8 @@ export function createServer(io = {}) {
         '3日間タスクビューア（https://reiji55.github.io/task-3days/）の中身を読み書きする。' +
         'tasks.txt が作業台（3日分＋「いつでも」）、week.json が週の時間割' +
         '（Google カレンダーの写しで、見るだけの資料）。' +
+        '各タスクの next（引き継ぎ）は、本人が「これを Claude にやってほしい」と' +
+        '画面から書き残したもの。読んだら拾って、済んだら空にする。' +
         '日付は Asia/Tokyo。まず get_tasks / get_week で現状と id を取ってから、他のツールを呼ぶこと。' +
         '書き換えは1回ごとに GitHub へ1コミット。'
     }
@@ -97,7 +100,8 @@ export function createServer(io = {}) {
     title: 'メモを書き換える',
     description:
       'タスクのメモを差し替える。空文字を渡すとメモ行ごと消える。' +
-      '改行を含めると memo: 行が複数本になる。',
+      '改行を含めると memo: 行が複数本になる。' +
+      'Claude への依頼を書く欄は別にある（set_next）。',
     inputSchema: {
       id: ID,
       memo: z.string().describe('新しいメモ。空文字でメモを削除')
@@ -105,6 +109,22 @@ export function createServer(io = {}) {
   }, edit(
     (text, { id, memo }) => setMemo(text, id, memo),
     (out, { memo }) => `tasks: メモを${String(memo).trim() ? '更新' : '削除'}（${out.task.title}）`
+  ));
+
+  server.registerTool('set_next', {
+    title: '引き継ぎを書き換える',
+    description:
+      'タスクの「引き継ぎ」（next 行）を差し替える。空文字を渡すと行ごと消える。' +
+      'ここは本人が画面から「これを Claude にやってほしい」と書き残す欄。' +
+      '拾って対応したら、何をしたかを memo に書いてから next を空にする。' +
+      '本人の覚え書きは memo、Claude への依頼は next、と使い分ける。',
+    inputSchema: {
+      id: ID,
+      next: z.string().describe('新しい引き継ぎ。空文字で削除')
+    }
+  }, edit(
+    (text, { id, next }) => setNext(text, id, next),
+    (out, { next }) => `tasks: 引き継ぎを${String(next).trim() ? '更新' : '削除'}（${out.task.title}）`
   ));
 
   server.registerTool('add_tasks', {

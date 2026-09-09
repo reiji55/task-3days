@@ -17,9 +17,11 @@ const ANYTIME_RE = /^#\s*(いつでも|anytime|inbox)\s*$/i;
 
 /**
  * @returns {{ lines: string[], days: Map<string, object[]>, headers: Map<string, number> }}
- *   task: { id, date, index, done, time, type, kind, proj, title, memo, at, memoAt }
+ *   task: { id, date, index, done, time, type, kind, proj, title, memo, next, at, memoAt, nextAt }
  *   at      … その行の lines 上の位置
  *   memoAt  … メモを構成している行の位置（複数可）
+ *   next    … Claude に引き継ぎたいこと（`next:` 行）
+ *   nextAt  … その行の位置（複数可）
  *   headers … 日付見出しの行の位置
  */
 export function parse(text) {
@@ -64,10 +66,20 @@ export function parse(text) {
         proj: clean(proj),
         title,
         memo: '',
+        next: '',
         at: i,
-        memoAt: []
+        memoAt: [],
+        nextAt: []
       };
       list.push(curTask);
+      return;
+    }
+
+    // 引き継ぎ（Claude にやってほしいこと）。メモより先に見る
+    const nx = line.match(/^(?:next|引き継ぎ|ひきつぎ)\s*[:：]\s*(.*)$/i);
+    if (nx && curTask) {
+      curTask.next = curTask.next ? curTask.next + '\n' + nx[1] : nx[1];
+      curTask.nextAt.push(i);
       return;
     }
 
@@ -97,22 +109,34 @@ export function writeDone(lines, at, done) {
   return lines;
 }
 
-/** メモ行を丸ごと差し替える。1行につき memo: を1本置くので parse で往復できる。 */
-export function writeMemo(lines, task, text) {
+/**
+ * `memo:` や `next:` の行を丸ごと差し替える。
+ * 1行につきタグを1本置くので parse で往復できる。
+ */
+function writeTagged(lines, task, text, tag, positions, fallback) {
   const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
   const block = String(text ?? '')
     .split('\n').map(s => s.trim()).filter(Boolean)
-    .map(s => indent + 'memo: ' + s);
+    .map(s => indent + tag + ': ' + s);
 
-  const old = task.memoAt.slice().sort((a, b) => a - b);
+  const old = positions.slice().sort((a, b) => a - b);
   if (old.length) {
     for (let k = old.length - 1; k >= 0; k--) lines.splice(old[k], 1);
     lines.splice(old[0], 0, ...block);
   } else {
-    lines.splice(task.at + 1, 0, ...block);
+    lines.splice(fallback, 0, ...block);
   }
   return lines;
 }
+
+/** メモ行を差し替える。無ければタスク行のすぐ下に足す。 */
+export const writeMemo = (lines, task, text) =>
+  writeTagged(lines, task, text, 'memo', task.memoAt, task.at + 1);
+
+/** 引き継ぎ行を差し替える。無ければメモの下（メモも無ければタスク行の下）に足す。 */
+export const writeNext = (lines, task, text) =>
+  writeTagged(lines, task, text, 'next', task.nextAt,
+    (task.memoAt.length ? Math.max(...task.memoAt) : task.at) + 1);
 
 /** Vercel は UTC で動くので、日付は必ずタイムゾーンを指定して出す。 */
 export function todayKey(tz = 'Asia/Tokyo', now = new Date()) {
@@ -147,7 +171,8 @@ export function findTask(days, id) {
 
 const view = t => ({
   id: t.id, done: t.done, time: t.time || null, type: t.type || null,
-  kind: t.kind, project: t.proj || null, title: t.title, memo: t.memo || null
+  kind: t.kind, project: t.proj || null, title: t.title,
+  memo: t.memo || null, next: t.next || null
 });
 
 /** MCP が返す形。scope="window" なら3日分、"all" なら全部。 */
@@ -245,13 +270,13 @@ export function formatTask(t, bullet = '-') {
   return head + [...lead.slice(0, last + 1).map(v => v || '-'), title].join(' | ');
 }
 
-const memoBlock = (memo, indent = '  ') =>
-  String(memo ?? '').split('\n').map(s => s.trim()).filter(Boolean).map(s => indent + 'memo: ' + s);
+const tagBlock = (text, tag, indent = '  ') =>
+  String(text ?? '').split('\n').map(s => s.trim()).filter(Boolean).map(s => indent + tag + ': ' + s);
 
 const normalize = t => ({
   done: !!t.done,
   time: field(t.time), type: field(t.type), proj: field(t.project ?? t.proj),
-  title: assertTitle(t.title), memo: String(t.memo ?? '')
+  title: assertTitle(t.title), memo: String(t.memo ?? ''), next: String(t.next ?? '')
 });
 
 const brief = t => ({ id: t.id, title: t.title });
@@ -268,6 +293,14 @@ export function setMemo(text, id, memo) {
   const { lines, days } = parse(text);
   const task = findTask(days, id);
   if ((task.memo || '').trim() !== String(memo ?? '').trim()) writeMemo(lines, task, memo);
+  return { text: lines.join('\n'), task: brief(task) };
+}
+
+/** 引き継ぎ（Claude にやってほしいこと）を差し替える。空文字で行ごと消える。 */
+export function setNext(text, id, next) {
+  const { lines, days } = parse(text);
+  const task = findTask(days, id);
+  if ((task.next || '').trim() !== String(next ?? '').trim()) writeNext(lines, task, next);
   return { text: lines.join('\n'), task: brief(task) };
 }
 
@@ -292,7 +325,11 @@ export function removeTasks(text, ids) {
   const { lines, days } = parse(text);
   const targets = ids.map(id => findTask(days, id));
   const kill = new Set();
-  for (const t of targets) { kill.add(t.at); t.memoAt.forEach(i => kill.add(i)); }
+  for (const t of targets) {
+    kill.add(t.at);
+    t.memoAt.forEach(i => kill.add(i));
+    t.nextAt.forEach(i => kill.add(i));
+  }
   [...kill].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
   return { text: lines.join('\n'), removed: targets.map(brief) };
 }
@@ -314,13 +351,13 @@ export function addTasks(text, date, items, { position = 'end', replace = false 
   }
 
   const { lines, days, headers } = parse(cur);
-  const block = list.flatMap(t => [formatTask(t), ...memoBlock(t.memo)]);
+  const block = list.flatMap(t => [formatTask(t), ...tagBlock(t.memo, 'memo'), ...tagBlock(t.next, 'next')]);
 
   if (headers.has(date)) {
     const tasks = days.get(date) || [];
     const at = (position === 'start' || !tasks.length)
       ? headers.get(date) + 1
-      : Math.max(tasks.at(-1).at, ...tasks.at(-1).memoAt) + 1;
+      : Math.max(tasks.at(-1).at, ...tasks.at(-1).memoAt, ...tasks.at(-1).nextAt) + 1;
     lines.splice(at, 0, ...block);
   } else {
     // 日付順に並んでいるファイルなら、その位置に差し込む。でなければ末尾。
@@ -347,7 +384,8 @@ export function moveTasks(text, ids, date, position = 'end') {
   const targets = ids.map(id => findTask(days, id));
   if (targets.some(t => t.date === date)) throw new Error(`既に ${date} にあるタスクが含まれています`);
   const carried = targets.map(t => ({
-    done: t.done, time: t.time, type: t.type, project: t.proj, title: t.title, memo: t.memo
+    done: t.done, time: t.time, type: t.type, project: t.proj, title: t.title,
+    memo: t.memo, next: t.next
   }));
   const cut = removeTasks(text, ids).text;
   const out = addTasks(cut, date, carried, { position });
