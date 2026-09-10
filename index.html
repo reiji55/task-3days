@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-10-swipe">
+<meta name="app-version" content="2026-09-10-fast">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -113,7 +113,6 @@ button.box{cursor:pointer}
 button.box:active{transform:scale(.9)}
 .task.done .box{background:var(--ink-3);border-color:var(--ink-3)}
 .task.done .box::after{content:"";width:9px;height:5px;border:2px solid var(--panel);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
-.task.busy{opacity:.5}
 .title{font-size:15px;font-weight:500;line-height:1.45;word-break:break-word}
 .task.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px;font-weight:400}
 
@@ -274,6 +273,23 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 #tabs button[aria-pressed="true"] i{background:currentColor}
 #tabs button:active{opacity:.55}
 body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない */
+
+/* ---- しくじったときの知らせ。下に数秒出て、自分で消える ---- */
+#toast{
+  position:fixed;left:50%;z-index:60;
+  bottom:calc(74px + env(safe-area-inset-bottom));
+  max-width:calc(100vw - 40px);
+  padding:9px 16px;border-radius:999px;
+  background:var(--ink);color:var(--bg);
+  font-size:12.5px;font-weight:550;line-height:1.5;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+  box-shadow:0 8px 26px -12px rgba(0,0,0,.6);
+  transform:translate(-50%, 14px);opacity:0;
+  transition:opacity .24s ease, transform .24s ease;
+  pointer-events:none;
+}
+#toast.on{transform:translate(-50%, 0);opacity:1}
+#toast[hidden]{display:none}
 
 /* ---- 週間タイムテーブル ---- */
 #week[hidden]{display:none}
@@ -501,7 +517,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 @media print{
   html,body{background:#fff;color:#000}
   header,#bar,#panel,#quick,.note,#wk-detail,#tabs,.reload,.sub,#wk-print,
-  #bd-detail{display:none !important}
+  #bd-detail,#toast{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
   #pane-days,#pane-board{display:none !important}
@@ -608,6 +624,8 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   </div></div>
 </div>
 
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
 <nav id="tabs" aria-label="表示の切り替え">
   <button id="v-board" aria-pressed="false" aria-label="ガイド">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11a1 1 0 011 1v16l-6.5-4.6L5.5 20.5v-16a1 1 0 011-1z"/></svg>
@@ -665,20 +683,22 @@ const TYPE_MAP = {
 };
 
 let pin = null;        // 端末に覚えさせた暗証番号。null なら読み取り専用
-let lines = [];        // tasks.txt の現在の中身を1行ずつ。編集はここを直接いじる
+let text = '';         // tasks.txt のいまの中身。画面はここから描く（ローカルが正）
+let saved = '';        // サーバーにある（はずの）中身。しくじったらここへ戻す
 let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替える
 let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
-let othersOpen = false; // 「その他の日」を開いているか。保存のたびに畳まないよう覚える
-let busy = null;       // 保存中の Promise。連打しても直列に流す
-let headers = new Map(); // 見出しが何行目にあるか。追加するときの差し込み先
-let view = 'days';     // 'days' = 3日分 / 'week' = 週間タイムテーブル
+let othersOpen = false; // 「その他の日」を開いているか。描き直しても畳まないよう覚える
+let view = 'days';     // 'board' = ガイド / 'days' = 3日分 / 'week' = 週間タイムテーブル
 let week = null;       // week.json の中身。まだ読んでいなければ null
 
-/* ---------- tasks.txt の読み書き ---------- */
+/* ---------- tasks.txt の読み書き ----------
+   書き換えは「テキストを受け取ってテキストを返す」だけの関数にしてある。
+   行番号を覚え込まず、渡されたテキストの中から id で探し直すので、
+   別の端末で先に更新されていても、最新に当て直して送れる。 */
 
-function parse(text){
-  lines = text.split(/\r?\n/);
-  headers = new Map();
+function parse(src){
+  const lines = String(src).split(/\r?\n/);
+  const headers = new Map();
   const days = new Map();
   let curDate = null, curTask = null;
   lines.forEach((raw, i) => {
@@ -708,6 +728,7 @@ function parse(text){
       curTask = { done, time: clean(time), type: clean(type), proj: clean(proj), title,
                   memo:'', next:'', at:i, memoAt:[], nextAt:[] };
       days.get(curDate).push(curTask);
+      curTask.id = `${curDate}#${days.get(curDate).length}`;   // mcp 側と同じ付け方
       return;
     }
 
@@ -731,24 +752,43 @@ function parse(text){
       curTask.memoAt.push(i);
     }
   });
-  return days;
+  return { days, lines, headers };
 }
 const clean = s => (!s || s === '-' || s === 'ー' || s === '—') ? '' : s;
 
-// チェック欄だけを差し替える。行の他の部分には触らない
-function writeDone(at, done){
-  lines[at] = lines[at].replace(/^(\s*[-*]\s*\[)[ xX✓](\])/, (_, a, b) => a + (done ? 'x' : ' ') + b);
+// テキストの中から id のタスクを探す。無ければ null（当て直しで消えていることがある）
+function find(src, id){
+  const doc = parse(src);
+  const cut = String(id).lastIndexOf('#');
+  const list = doc.days.get(String(id).slice(0, cut)) || [];
+  const task = list[Number(String(id).slice(cut + 1)) - 1];
+  return task ? { ...doc, task } : null;
 }
 
-// タスク行とそのメモ行を消す。後ろから消さないと位置がずれる
-function writeRemove(task){
-  [task.at, ...task.memoAt, ...task.nextAt].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
-}
+/* ---- 書き換え。どれも text => text で、副作用を持たない ---- */
+
+// チェック欄だけを差し替える。行の他の部分には触らない
+const opDone = (id, done) => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  at.lines[at.task.at] = at.lines[at.task.at]
+    .replace(/^(\s*[-*]\s*\[)[ xX✓](\])/, (_, a, b) => a + (done ? 'x' : ' ') + b);
+  return at.lines.join('\n');
+};
+
+// タスク行とそのメモ・引き継ぎの行を消す。後ろから消さないと位置がずれる
+const opRemove = id => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  [at.task.at, ...at.task.memoAt, ...at.task.nextAt]
+    .sort((a, b) => b - a).forEach(i => at.lines.splice(i, 1));
+  return at.lines.join('\n');
+};
 
 // 「いつでも」の末尾にタスクを1本足す。見出しが無ければファイルの末尾に作る。
 // title に | が入っていると列の区切りに見えるので、その場合だけ空欄を明示する
-function writeAdd(title){
-  const days = parse(lines.join('\n'));      // lines と headers を作り直す
+const opAdd = title => src => {
+  const { days, lines, headers } = parse(src);
   const row = title.includes('|') ? `- [ ] - | - | - | ${title}` : `- [ ] ${title}`;
   const list = days.get(ANYTIME) || [];
   if (headers.has(ANYTIME)) {
@@ -759,13 +799,37 @@ function writeAdd(title){
     while (lines.length && lines.at(-1).trim() === '') lines.pop();
     lines.push('', ANYTIME_HEADER, row, '');
   }
-}
+  return lines.join('\n');
+};
+
+// memo: / next: の行を丸ごと差し替える。1行につきタグ1本、で往復できる
+const opTagged = (id, tag, value) => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  const { lines, task } = at;
+  const spots = tag === 'memo' ? task.memoAt : task.nextAt;
+  // 引き継ぎはメモの下。メモが無ければタスク行の下
+  const fallback = tag === 'memo'
+    ? task.at + 1
+    : (task.memoAt.length ? Math.max(...task.memoAt) : task.at) + 1;
+  const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
+  const block = String(value).split('\n').map(s => s.trim()).filter(Boolean)
+    .map(s => indent + tag + ': ' + s);
+  const old = spots.slice().sort((a, b) => a - b);
+  if (old.length) {
+    for (let k = old.length - 1; k >= 0; k--) lines.splice(old[k], 1);
+    lines.splice(old[0], 0, ...block);
+  } else {
+    lines.splice(fallback, 0, ...block);
+  }
+  return lines.join('\n');
+};
 
 // 中身が空になった過去の日付の見出しを、節ごと落とす。タスクを全部消した日の
 // 見出しだけが残って「その他の日」に空の欄として出続けるのを防ぐ。
 // 3日の窓・今日以降・「いつでも」・空行以外が残っている節には触らない。
-function pruneEmptyPast(){
-  const days = parse(lines.join('\n'));      // lines と headers を作り直す
+function tidy(src){
+  const { days, lines, headers } = parse(src);
   const now = new Date();
   const today = ymd(now);
   const win = new Set([-1, 0, 1].map(off =>
@@ -780,29 +844,13 @@ function pruneEmptyPast(){
     for (let i = at + 1; i < end; i++) if (lines[i].trim()) return;
     for (let i = at; i < end; i++) cut.push(i);
   });
-  if (!cut.length) return;
+  if (!cut.length) return src;
 
   cut.sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
   while (lines.length > 1 && !lines.at(-1).trim() && !lines.at(-2).trim()) lines.pop();
   if (lines.length && lines.at(-1) !== '') lines.push('');
+  return lines.join('\n');
 }
-
-// memo: / next: の行を丸ごと差し替える。1行につきタグ1本、で往復できる
-function writeTagged(task, text, tag, positions, fallback){
-  const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
-  const block = text.split('\n').map(s => s.trim()).filter(Boolean).map(s => indent + tag + ': ' + s);
-  const old = positions.slice().sort((a,b) => a - b);
-  if (old.length) {
-    for (let k = old.length - 1; k >= 0; k--) lines.splice(old[k], 1);
-    lines.splice(old[0], 0, ...block);
-  } else {
-    lines.splice(fallback, 0, ...block);
-  }
-}
-const writeMemo = (task, text) => writeTagged(task, text, 'memo', task.memoAt, task.at + 1);
-// 引き継ぎはメモの下。メモが無ければタスク行の下
-const writeNext = (task, text) => writeTagged(task, text, 'next', task.nextAt,
-  (task.memoAt.length ? Math.max(...task.memoAt) : task.at) + 1);
 
 /* ---------- 保存先の API ---------- */
 
@@ -824,39 +872,95 @@ async function apiRead(){
   return json.text;
 }
 
-async function apiWrite(text, message){
+async function apiWrite(body, message, keepalive){
   const res = await fetch(API, {
-    method:'PUT',
+    method:'PUT', keepalive: !!keepalive,
     headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
-    body: JSON.stringify({ text, sha, message })
+    body: JSON.stringify({ text: body, sha, message })
   });
   if (res.status === 409) throw new Error('conflict');
   if (!res.ok) throw await fail(res);
   sha = (await res.json()).sha;
 }
 
-// lines を書き換えたあとに呼ぶ。保存 → 再描画までまとめて面倒を見る
-function save(message){
-  const run = async () => {
-    say('保存中…');
-    pruneEmptyPast();          // 空になった過去の日付は、この保存に相乗りさせて片付ける
-    const text = lines.join('\n');
+/* ---------- 保留してまとめて出す ----------
+   タップした瞬間に手元のテキストを直して描き直し、往復は待たない。
+   手が止まってからまとめて1回だけ送るので、5個続けて付けてもコミットは1本。 */
+
+const WAIT_TAP = 500;      // チェックや削除。指が止まってから
+const WAIT_TYPE = 1000;    // メモの打鍵。1文字ごとには送らない
+
+let pending = [];          // まだサーバーに出していない書き換え（text => text の列）
+let saveTimer = null;
+let saving = false;
+let lastMsg = '';
+
+const draw = () => render(parse(text).days);
+const dirty = () => pending.length > 0 || saving;
+
+function schedule(ms){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, ms);
+}
+
+/**
+ * 手元のテキストを直して、すぐ描き直す。保存はあとでまとめて。
+ * @param key 同じ欄を続けて直したときに、前のぶんと入れ替えるための名前
+ */
+function edit(fn, message, wait, key){
+  if (!pin) return;
+  let next;
+  try { next = fn(text); } catch (e) { return; }
+  if (next === text) return;
+  text = next;
+  lastMsg = message;
+  if (key && pending.length && pending.at(-1).key === key) pending[pending.length - 1] = { fn, key };
+  else pending.push({ fn, key });
+  say('保存中…');
+  schedule(wait == null ? WAIT_TAP : wait);
+}
+
+// 保留分をまとめて1回だけ送る。閉じる直前は keepalive で投げっぱなしにする
+async function flush(keepalive){
+  clearTimeout(saveTimer); saveTimer = null;
+  if (saving || !pending.length || !pin) return;
+  saving = true;
+
+  const back = saved;                       // 戻す先
+  const sending = pending.splice(0);
+  const message = lastMsg;
+  let body = tidy(text);                    // 空になった過去の日はここで片付ける
+  if (body !== text) { text = body; draw(); }
+
+  try {
+    if (body === saved) { say(''); return; }  // 行って帰ってきただけ。コミットを作らない
     try {
-      await apiWrite(text, message);
-      render(parse(text));
-      say('保存しました');
+      await apiWrite(body, message, keepalive);
     } catch (e) {
-      if (e.message === 'conflict') {
-        say('他で更新されていたので読み直しました', true);
-        await load();
-      } else {
-        say(e.message, true);
-        await load();
-      }
+      if (e.message !== 'conflict') throw e;
+      // 他所で先に更新されていた。最新を取り直して、同じ書き換えを当て直す
+      const fresh = await apiRead();
+      const again = [...sending, ...pending.splice(0)];
+      body = again.reduce((t, op) => op.fn(t), fresh);
+      text = body;
+      draw();
+      await apiWrite(body, message, keepalive);   // やり直しは1回だけ
     }
-  };
-  busy = (busy || Promise.resolve()).then(run, run);
-  return busy;
+    saved = body;
+    say('');
+  } catch (e) {
+    // 当て直しても駄目。保留を捨てて、操作する前の状態に戻す
+    pending.length = 0;
+    try { text = await apiRead(); } catch (x) { text = back; }
+    saved = text;
+    draw();
+    say('');
+    toast(/conflict|先に更新/.test(e.message)
+      ? '他の端末で更新されたため読み直しました' : '保存できませんでした');
+  } finally {
+    saving = false;
+    if (pending.length) schedule(0);
+  }
 }
 
 /* ---------- 表示 ---------- */
@@ -878,22 +982,38 @@ function say(msg, bad){
   n.classList.toggle('bad', !!bad);
 }
 
+// しくじったときだけ、下に数秒出して消える知らせ
+let toastTimer = null;
+function toast(msg){
+  const n = document.getElementById('toast');
+  n.textContent = msg;
+  n.hidden = false;
+  n.offsetHeight;                                   // ここまでを確定させてから出す
+  n.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    n.classList.remove('on');
+    setTimeout(() => { if (!n.classList.contains('on')) n.hidden = true; }, 320);
+  }, 4000);
+}
+
 const FIELD = {
-  memo: { label: '',       write: writeMemo, word: 'メモ' },
-  next: { label: '引き継ぎ', write: writeNext, word: '引き継ぎ' }
+  memo: { label: '',       tag: 'memo', word: 'メモ' },
+  next: { label: '引き継ぎ', tag: 'next', word: '引き継ぎ' }
 };
 
 function openEditor(card, task, kind){
   if (card.querySelector('.memo-edit')) return;
   const f = FIELD[kind];
+  const was = task[kind];
   editing = true;
   const wrap = el('div','memo-edit');
   if (f.label) wrap.append(el('span','who', f.label));
   const ta = el('textarea');
-  ta.value = task[kind];
+  ta.value = was;
   ta.placeholder = kind === 'next' ? 'Claude にやってほしいこと' : '';
   const row = el('div','row');
-  const ok = el('button', 'primary', '保存');
+  const ok = el('button', 'primary', '閉じる');
   const cancel = el('button', null, 'やめる');
   row.append(ok, cancel);
   wrap.append(ta, row);
@@ -903,15 +1023,21 @@ function openEditor(card, task, kind){
   card.append(wrap);
   ta.focus();
 
-  const close = () => { editing = false; wrap.remove(); if (shown) shown.hidden = false; };
-  cancel.addEventListener('click', close);
-  ok.addEventListener('click', () => {
-    const val = ta.value;
-    close();
-    if (val.trim() === task[kind].trim()) return;
-    f.write(task, val);
-    save(`tasks: ${f.word}を${val.trim() ? '更新' : '削除'}（${task.title}）`);
-  });
+  // 打つそばから手元のテキストへ。送るのは打鍵が止まってから
+  const put = val => edit(opTagged(task.id, f.tag, val),
+    `tasks: ${f.word}を${String(val).trim() ? '更新' : '削除'}（${task.title}）`,
+    WAIT_TYPE, `${f.tag}:${task.id}`);
+
+  ta.addEventListener('input', () => put(ta.value));
+
+  const close = redraw => {
+    editing = false;
+    wrap.remove();
+    if (shown) shown.hidden = false;
+    if (redraw) draw();
+  };
+  cancel.addEventListener('click', () => { put(was); close(true); });   // 開く前に戻す
+  ok.addEventListener('click', () => close(true));
 }
 
 function renderDay(key, rel, tasks, isToday){
@@ -932,9 +1058,9 @@ function renderDay(key, rel, tasks, isToday){
       box = el('button','box');
       box.setAttribute('aria-label', (t.done ? '未完了に戻す: ' : '完了にする: ') + t.title);
       box.addEventListener('click', () => {
-        card.classList.add('busy');
-        writeDone(t.at, !t.done);
-        save(`tasks: ${t.done ? '未完了に戻す' : '完了'}（${t.title}）`);
+        edit(opDone(t.id, !t.done),
+          `tasks: ${t.done ? '未完了に戻す' : '完了'}（${t.title}）`, WAIT_TAP, `done:${t.id}`);
+        draw();
       });
     } else {
       box = el('div','box');
@@ -946,9 +1072,8 @@ function renderDay(key, rel, tasks, isToday){
       del.setAttribute('aria-label', '削除: ' + t.title);
       del.addEventListener('click', () => {
         if (!confirm(`「${t.title}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
-        card.classList.add('busy');
-        writeRemove(t);
-        save(`tasks: 削除（${t.title}）`);
+        edit(opRemove(t.id), `tasks: 削除（${t.title}）`);
+        draw();
       });
       card.append(del);
     }
@@ -1872,7 +1997,7 @@ function setView(next){
   const from = paneIndex();
   keepScroll();
   view = next;
-  say('');
+  if (!dirty()) say('');
   viewState();
   sliding = true;
   live(from);
@@ -1997,16 +2122,19 @@ function setView(next){
 /* ---------- 読み込み ---------- */
 
 async function load(){
+  if (dirty()) return flush();          // 出していない分があるなら、上書きせず先に出す
   try {
-    let text;
+    let src;
     if (pin) {
-      text = await apiRead();
+      src = await apiRead();
     } else {
       const res = await fetch('tasks.txt?t=' + Date.now(), { cache:'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      text = await res.text();
+      src = await res.text();
     }
-    render(parse(text));
+    text = src;
+    saved = src;
+    draw();
   } catch (e) {
     const app = document.getElementById('app');
     app.textContent = '';
@@ -2061,13 +2189,14 @@ document.getElementById('pin-save').addEventListener('click', async () => {
   }
 });
 document.getElementById('pin-clear').addEventListener('click', async () => {
-  await flushBoard();                // 未保存があれば出してから、書けない状態に落とす
+  await flush();                     // 未保存があれば出してから、書けない状態に落とす
+  await flushBoard();
   try { localStorage.removeItem(PIN_KEY); } catch (e) {}
   try { localStorage.removeItem(BOARD_KEY); } catch (e) {}
   pin = null; sha = null; board = null; boardSha = null;
   document.getElementById('pin').value = '';
   showMode();
-  render(parse(lines.join('\n')));   // 読み込みを待たずに操作を止める
+  draw();                            // 読み込みを待たずに操作を止める
   say('暗証番号を削除しました');
   await load();
 });
@@ -2079,8 +2208,8 @@ document.getElementById('quick').addEventListener('submit', e => {
   if (!title) return;
   box.value = '';
   box.blur();                    // iOS のキーボードを閉じる
-  writeAdd(title);
-  save(`tasks: 追加（${title}）`);
+  edit(opAdd(title), `tasks: 追加（${title}）`);
+  draw();
 });
 
 // 1分ごとに「今」を進める。作り直さないので操作の邪魔をしない
@@ -2114,19 +2243,29 @@ document.getElementById('bd-add').addEventListener('click', () => {
 // 読み直し。未保存のまま取り直すと打った分が消えるので、そのときは触らない
 const refresh = async () => {
   if (view === 'week') return loadWeek();
-  if (view !== 'board') return load();
+  if (view !== 'board') { await flush(); return load(); }
   if (bdDirty()) { bdSay('未保存です。先に保存を押してください', true); return; }
   return loadBoard();
 };
 
-document.getElementById('reload').addEventListener('click', () => { say(''); refresh(); });
+document.getElementById('reload').addEventListener('click', () => {
+  if (!dirty()) say('');
+  refresh();
+});
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { keepBoard(); return; }   // 閉じる前に端末へ写す（上げはしない）
+  if (document.hidden) { keepBoard(); flush(true); return; }   // 閉じる前に出す
   if (editing) return;
   checkVersion();                    // 開き直したときに、古ければ自分で入れ替わる
   refresh();
 });
-addEventListener('pagehide', keepBoard);
+addEventListener('pagehide', () => { keepBoard(); flush(true); });
+
+// 出しそこねたまま閉じられそうなら止める（keepalive が効かない端末の保険）
+addEventListener('beforeunload', e => {
+  if (!dirty()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 document.getElementById('bd-save').addEventListener('click', flushBoard);
 document.getElementById('bd-save2').addEventListener('click', flushBoard);
