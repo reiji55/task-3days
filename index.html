@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-09-guide">
+<meta name="app-version" content="2026-09-10-save">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -238,10 +238,13 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 #deck{
   display:flex;align-items:flex-start;width:100%;
   transition:transform .32s cubic-bezier(.25,.8,.35,1);
-  will-change:transform;
 }
 #deck > .pane{flex:0 0 100%;min-width:0}
 #deck > .pane.off{display:none}      /* 動かしている間は隣だけ off を外す */
+/* 動かしている間だけ。will-change は transform が none でも含みブロックを作るので、
+   常時付けておくと週の見出しの sticky が画面ではなく #deck を基準にしてしまう */
+#deck.live{will-change:transform;overflow:hidden}
+#deck.live .wk-head{position:static}
 
 /* ---- 表示の切り替え ---- */
 /* ---- 下の切り替え。しるしだけで、真ん中がタスク ---- */
@@ -350,27 +353,24 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 /* ---- ボード（やり方を書き溜めておく読み物） ----
    一覧は色付きのカードを重ねて置き、タップすると全画面の詳細になる。
    詳細は上半分がカードの色、下から白い面がせり上がって中身を見せる。 */
-.bd-hero{display:flex;align-items:center;gap:12px;margin:10px 0 0;padding:0 4px}
-.bd-title{
-  position:relative;display:inline-block;margin:0;
-  font-size:33px;font-weight:700;letter-spacing:-.02em;line-height:1.15;
-}
-.bd-ring{
-  position:absolute;left:-27px;top:-17px;width:calc(100% + 54px);height:calc(100% + 34px);
-  fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;
-  opacity:.88;pointer-events:none;
-}
 .bd-plus{
-  appearance:none;margin-left:auto;flex:none;width:38px;height:38px;border-radius:50%;
+  appearance:none;flex:none;width:34px;height:34px;border-radius:50%;
   border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
-  font:inherit;font-size:19px;line-height:1;cursor:pointer;
+  font:inherit;font-size:18px;line-height:1;cursor:pointer;
 }
 .bd-plus:active{opacity:.6}
 .bd-plus[hidden]{display:none}
+.bd-save{
+  appearance:none;flex:none;white-space:nowrap;cursor:pointer;font:inherit;
+  font-size:12px;font-weight:650;padding:5px 14px;border-radius:999px;
+  border:1px solid var(--ink);background:var(--ink);color:var(--bg);
+}
+.bd-save:active{opacity:.6}
+.bd-save[hidden]{display:none}
 
 .bd-search{
-  display:flex;align-items:center;gap:9px;margin:26px 0 18px;padding:0 4px;
-  color:var(--ink-3);
+  display:flex;align-items:center;gap:9px;padding:0 4px;color:var(--ink-3);
+  margin:clamp(16px, 17vh, 170px) 0 0;      /* 見本と同じで、札は画面の下の方から */
 }
 .bd-search svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;
   stroke-width:1.8;stroke-linecap:round}
@@ -383,7 +383,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .bd-search input::-webkit-search-cancel-button{-webkit-appearance:none}
 #bd-state{flex:none;font-size:11px;font-variant-numeric:tabular-nums}
 #bd-state.bad{color:var(--warn)}
-#bd-stack{display:flex;flex-direction:column;padding-bottom:6px}
+#bd-stack{display:flex;flex-direction:column;padding-bottom:6px;margin-top:16px}
 
 /* カードは重ねる。下の1枚が覗いていることで「まだ続く」と分かる */
 .bd-card{
@@ -402,7 +402,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 
 /* ---- 詳細（全画面） ---- */
 #bd-detail{
-  --rest:54%;                       /* 白い面が休んでいるときの、下からの高さ */
+  --rest:36%;                       /* 白い面が休んでいるときの、下からの高さ */
   position:fixed;inset:0;z-index:40;overflow:hidden;
   background:var(--c,#eee);color:#14130f;
   transform:translateY(100%);
@@ -413,6 +413,11 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 #bd-detail.slide .bd-top,
 #bd-detail.slide .bd-rows{transition:opacity .16s ease;opacity:0}
 .bd-top{padding:calc(10px + env(safe-area-inset-top)) 22px 0}
+.bd-head-row{display:flex;align-items:center;gap:10px}
+.bd-top .bd-save{
+  margin-left:auto;border-color:#14130f;background:#14130f;
+  color:color-mix(in srgb, var(--c) 22%, #fff);
+}
 .bd-back{
   appearance:none;border:0;background:transparent;cursor:pointer;
   width:38px;height:38px;margin-left:-10px;padding:0;
@@ -459,7 +464,7 @@ textarea.rv::placeholder{color:rgba(0,0,0,.3)}
   background:var(--panel);color:var(--ink);
   border-radius:26px 26px 0 0;
   box-shadow:0 -12px 34px -20px rgba(0,0,0,.55);
-  transform:translateY(var(--sheet,46%));
+  transform:translateY(var(--sheet,64%));
   transition:transform .34s cubic-bezier(.25,.8,.35,1);
 }
 #bd-sheet.drag{transition:none}
@@ -552,26 +557,20 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   <div id="deck-clip"><div id="deck">
     <div class="pane off" id="pane-board">
       <section id="board">
-        <div class="bd-hero">
-          <h2 class="bd-title">Tasks guide<svg class="bd-ring" viewBox="0 0 240 84"
-               preserveAspectRatio="none" aria-hidden="true"><path
-               d="M203 27C199 11 156 3 118 4 62 6 17 20 13 41 9 63 55 79 113 80c56 1 108-14 113-33 3-13-11-25-33-32"
-               vector-effect="non-scaling-stroke"/></svg></h2>
-          <button class="bd-plus" id="bd-add" hidden aria-label="カードを足す">＋</button>
-        </div>
-
         <div class="bd-search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
           <input id="bd-q" type="search" placeholder="Search" autocomplete="off"
                  autocapitalize="off" spellcheck="false" aria-label="カードを探す">
           <span id="bd-state"></span>
+          <button class="bd-save" id="bd-save" hidden>保存</button>
+          <button class="bd-plus" id="bd-add" hidden aria-label="カードを足す">＋</button>
         </div>
 
         <div id="bd-stack"></div>
       </section>
 
       <p class="note" id="bd-foot">カードをタップすると開きます。<br>
-        書いたことは <code>board.json</code> に残り、Claude からも読めます。</p>
+        直したら <b>保存</b> を押すと <code>board.json</code> に残り、Claude からも読めます。</p>
     </div>
 
     <div class="pane" id="pane-days">
@@ -625,7 +624,10 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
      position:fixed がそちらを基準にしてしまう） -->
 <section id="bd-detail" hidden aria-label="ボードの詳細">
   <div class="bd-top" id="bd-top">
-    <button class="bd-back" id="bd-back" aria-label="一覧へ戻る"><i></i></button>
+    <div class="bd-head-row">
+      <button class="bd-back" id="bd-back" aria-label="一覧へ戻る"><i></i></button>
+      <button class="bd-save" id="bd-save2" hidden>保存</button>
+    </div>
     <textarea class="bd-big" id="bd-big" rows="1" placeholder="見出し"
               enterkeyhint="done" autocapitalize="off" spellcheck="false"></textarea>
     <div class="bd-rows" id="bd-rows"></div>
@@ -651,7 +653,6 @@ const ANYTIME_RE = /^#\s*(いつでも|anytime|inbox)\s*$/i;
 // 週間タイムテーブル。Google カレンダーの写しで、読むだけ。
 // 中身の形は weekplan スキルの events.json と同じにしてある。
 const WEEK_SRC = 'week.json';
-const VIEW_KEY = 'task3days.view';
 const PALETTE = ['#3b6fd4','#c2571f','#2f8f6b','#8a4fbf','#b0345c','#5c7a1e','#1f7f9c','#8a6a1f'];
 const DIM_DEFAULT = ['睡眠', '生活時間'];
 
@@ -1422,7 +1423,7 @@ async function loadWeek(){
 
 const BOARD_SRC = 'board.json';
 const BOARD_KEY = 'task3days.board';
-const BOARD_WAIT = 1200;        // 打ち終わってからこれだけ待って、裏で書く
+// 直しても勝手には上げない。端末には即入れて、GitHub へ出すのは「保存」を押したとき
 // 色の面には短い2つを行で並べ、長い Detail だけ白い面に入れる（見本と同じ割り）
 const BD_ROWS = [
   { k:'purpose', label:'Purpose', hint:'なぜやるのか' },
@@ -1436,12 +1437,20 @@ let board = null;         // { updated, cards } まだ読んでいなければ n
 let boardSha = null;      // board.json の blob SHA。書き込みに要る
 let boardErr = '';
 let bdVer = 0, bdSaved = 0;   // 直した回数と、書き終えた回数。ずれていたら未保存
-let bdTimer = null, bdBusy = null, bdMsg = '';
+let bdBusy = null, bdMsg = '';
+
+const bdDirty = () => bdVer !== bdSaved;
 
 function bdSay(msg, bad){
   const n = document.getElementById('bd-state');
   n.textContent = msg || '';
   n.classList.toggle('bad', !!bad);
+}
+
+// 「保存」は、直したときだけ出す。一覧と詳細のどちらからでも押せる
+function bdButtons(){
+  const on = bdDirty() && !!board;
+  for (const id of ['bd-save', 'bd-save2']) document.getElementById(id).hidden = !on;
 }
 
 // 端末の壁の時計。画面は updated をそのまま読むので、UTC では書けない
@@ -1466,29 +1475,28 @@ function keepBoard(){
   } catch (e) { /* 入らなくても画面は動く */ }
 }
 
-// 直したら呼ぶ。画面はもう直っているので、ここは保存の予約だけ
+// 直したら呼ぶ。画面と端末にはもう入っている。あとは「保存」待ち
 function touchBoard(message){
   bdVer++;
   bdMsg = message || bdMsg;
   keepBoard();
   bdSay(pin ? '未保存' : 'この端末の中だけ');
-  clearTimeout(bdTimer);
-  bdTimer = setTimeout(() => flushBoard(), BOARD_WAIT);
+  bdButtons();
 }
 
-// 予約した保存を実際に流す。閉じる直前にも呼ぶので keepalive を渡せる
-async function flushBoard(keepalive){
-  clearTimeout(bdTimer); bdTimer = null;
-  if (!board || bdVer === bdSaved) return;
+// 「保存」を押したときに走る。GitHub まで出すのはここだけ
+async function flushBoard(){
+  if (!board || !bdDirty()) return;
   if (!pin || !boardSha) { bdSay('この端末の中だけに残しています'); return; }
 
   const run = async () => {
-    if (bdVer === bdSaved) return;
+    if (!bdDirty()) return;
     const v = bdVer;
     const text = JSON.stringify({ updated: stampLocal(), cards: board.cards }, null, 2) + '\n';
     try {
+      bdSay('保存中…');
       const res = await fetch(`${API}?file=board`, {
-        method:'PUT', keepalive: !!keepalive,
+        method:'PUT',
         headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
         body: JSON.stringify({ text, sha: boardSha, message: bdMsg || 'board: 更新' })
       });
@@ -1498,14 +1506,16 @@ async function flushBoard(keepalive){
       bdSaved = v;                       // 途中でまた直していたら、次のぶんが残る
       bdMsg = '';
       keepBoard();
+      bdButtons();
       bdSay('保存しました');
-      setTimeout(() => { if (bdVer === bdSaved) bdSay(''); }, 1600);
+      setTimeout(() => { if (!bdDirty()) bdSay(''); }, 1800);
     } catch (e) {
       if (e.message === 'conflict') {
         bdSay('他で更新されていたので読み直しました', true);
         await loadBoard();
       } else {
-        bdSay(e.message, true);          // 端末の中には残っているので、次の機会に上がる
+        bdSay(e.message, true);          // 端末の中には残っているので、押し直せば上がる
+        bdButtons();
       }
     }
   };
@@ -1565,36 +1575,25 @@ function renderBoard(){
    カードの色がそのまま画面いっぱいに広がり、下から白い面がせり上がる。
    白い面は指について動き、離すと近い方に吸い付く。 */
 
-const FULL = 20;                 // 上げたときの上端。画面の高さに対する %
+// 白い面の上端。画面の高さに対する %。休むときは下の方に置いて、引き上げて読む
+const PEEK = 64, FULL = 18;
 let bdAt = -1;                   // 開いているカード。-1 は一覧
 let bdUp = false;                // 白い面が上まで来ているか
-let restY = 0;                   // 休んでいるときの上端（px）
 
 const sheet = () => document.getElementById('bd-sheet');
 const detail = () => document.getElementById('bd-detail');
 const boxH = () => detail().clientHeight || window.innerHeight;
-
-// 白い面は Created on のすぐ下で休ませる。見本と同じで、色の面に隙間を作らない。
-// 欄の量で位置が変わるので、毎回測る
-function measureRest(){
-  const box = detail();
-  const rows = document.getElementById('bd-rows');
-  const h = boxH();
-  const under = rows.getBoundingClientRect().bottom - box.getBoundingClientRect().top;
-  restY = Math.min(Math.max(under + 44, h * 0.32), h * 0.68);
-  box.style.setProperty('--rest', (h - restY) + 'px');
-}
+const restY = () => PEEK / 100 * boxH();
 
 function sheetSet(up){
   bdUp = !!up;
   sheet().classList.remove('drag');
-  sheet().style.setProperty('--sheet', bdUp ? FULL + '%' : restY + 'px');
+  sheet().style.setProperty('--sheet', (bdUp ? FULL : PEEK) + '%');
 }
 
-// 中身を入れた直後に、高さを合わせて休む位置を決める
+// 中身を入れた直後に、textarea の高さを中身に合わせる
 function bdLayout(){
   detail().querySelectorAll('textarea').forEach(grow);
-  measureRest();
   sheetSet(bdUp);
 }
 
@@ -1665,7 +1664,6 @@ function bdFill(i){
       bdHide();
       renderBoard();
       touchBoard(`board: 削除（${name}）`);
-      flushBoard();                              // 消したものは待たせずに書く
     });
     foot.append(del);
     fields.append(foot);
@@ -1729,9 +1727,8 @@ function restoreDraft(){
   if (!boardSha || d.sha !== boardSha) { try { localStorage.removeItem(BOARD_KEY); } catch (e) {} return; }
   if (board) board.cards = d.cards;
   if (!d.dirty) return;
-  bdVer = 1;
-  bdSay('未保存の下書きを上げます');
-  setTimeout(() => flushBoard(), 300);
+  bdVer = 1;                                     // 未保存のまま。「保存」で上がる
+  bdSay('未保存の下書きがあります');
 }
 
 async function loadBoard(){
@@ -1773,6 +1770,7 @@ async function loadBoard(){
                   cards: Array.isArray(got.cards) ? got.cards : [] } : null;
   restoreDraft();
   renderBoard();
+  bdButtons();
   // 開いたまま読み直したときは、同じ位置の中身に差し替える
   if (bdAt >= 0) { if (board && board.cards[bdAt]) bdFill(bdAt); else bdHide(); }
   // 読めたけれど書き戻せない状態（公開ファイルから読んだ）を先に伝えておく
@@ -1790,12 +1788,10 @@ let sliding = false;
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
   document.getElementById('quick').hidden = view !== 'days' || !pin;
-  // ボードは面の中に大きな見出しを持っているので、上は空けておく
   document.getElementById('h1').textContent =
-    view === 'week' ? '週の時間割' : view === 'board' ? '' : '3日間タスク';
+    view === 'week' ? '週の時間割' : view === 'board' ? 'Tasks guide' : '3日間タスク';
   VIEWS.forEach(k => document.getElementById('v-' + k)
     .setAttribute('aria-pressed', String(k === view)));
-  try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* 保存できなくても動く */ }
   if (view !== 'board' && bdAt >= 0) bdHide();     // 他の面へ行くなら詳細は閉じる
   if (view === 'week' && !week) loadWeek();
   if (view === 'board' && !board) loadBoard();
@@ -1807,6 +1803,7 @@ function rest(index){
   panes().forEach((p, i) => p.classList.toggle('off', i !== index));
   d.style.transition = 'none';
   d.style.transform = 'none';
+  d.style.height = '';
   d.classList.remove('live');
   d.offsetHeight;                                   // ここまでを確定させる
   d.style.transition = '';
@@ -1817,7 +1814,10 @@ function rest(index){
 // 全部出すと一番高い面に合わせて背が伸びるので、隣までにとどめる
 function live(from){
   const d = deck();
+  // 隣を出すと背が高い方に合わさって、指の下の中身がずれる。今の高さで留める
+  const keep = d.offsetHeight;
   panes().forEach((p, i) => p.classList.toggle('off', Math.abs(i - from) > 1));
+  d.style.height = keep + 'px';
   d.classList.add('live');
   d.style.transition = 'none';
   d.style.transform = `translateX(${-100 * from}%)`;
@@ -1923,11 +1923,11 @@ function setView(next){
 
   const open = () => !detail().hidden && bdAt >= 0;
   const top = () => FULL / 100 * boxH();
-  const pct = () => (bdUp ? top() : restY);
+  const pct = () => (bdUp ? top() : restY());
 
   // 白い面を指の位置に置く。行き過ぎは重くして端を知らせる
   function put(px){
-    const lo = top(), hi = restY;
+    const lo = top(), hi = restY();
     const y = px < lo ? lo - (lo - px) / 3 : px > hi ? hi + (px - hi) / 3 : px;
     sheet().classList.add('drag');
     sheet().style.setProperty('--sheet', y + 'px');
@@ -2050,7 +2050,7 @@ document.getElementById('pin-save').addEventListener('click', async () => {
   }
 });
 document.getElementById('pin-clear').addEventListener('click', async () => {
-  await flushBoard();                // 打った分を上げてから、書けない状態に落とす
+  await flushBoard();                // 未保存があれば出してから、書けない状態に落とす
   try { localStorage.removeItem(PIN_KEY); } catch (e) {}
   try { localStorage.removeItem(BOARD_KEY); } catch (e) {}
   pin = null; sha = null; board = null; boardSha = null;
@@ -2100,30 +2100,30 @@ document.getElementById('bd-add').addEventListener('click', () => {
   touchBoard('board: カードを追加');
 });
 
-// 読み直し。ボードは打った分を先に上げてから取り直す
+// 読み直し。未保存のまま取り直すと打った分が消えるので、そのときは触らない
 const refresh = async () => {
   if (view === 'week') return loadWeek();
   if (view !== 'board') return load();
-  await flushBoard();
+  if (bdDirty()) { bdSay('未保存です。先に保存を押してください', true); return; }
   return loadBoard();
 };
 
 document.getElementById('reload').addEventListener('click', () => { say(''); refresh(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { flushBoard(true); return; }   // 閉じる前に打った分を出す
+  if (document.hidden) { keepBoard(); return; }   // 閉じる前に端末へ写す（上げはしない）
   if (editing) return;
   checkVersion();                    // 開き直したときに、古ければ自分で入れ替わる
   refresh();
 });
-addEventListener('pagehide', () => flushBoard(true));
+addEventListener('pagehide', keepBoard);
 
-// 開く画面。URL の ?v=week / ?v=board が最優先、次に前回開いていた方
+document.getElementById('bd-save').addEventListener('click', flushBoard);
+document.getElementById('bd-save2').addEventListener('click', flushBoard);
+
+// 開くのはいつも3日間タスク。URL に ?v=week / ?v=board があるときだけそちら
 function loadView(){
-  let fromUrl = null;
-  try { fromUrl = new URL(location.href).searchParams.get('v'); } catch (e) {}
-  let saved = null;
-  try { saved = localStorage.getItem(VIEW_KEY); } catch (e) {}
-  const want = fromUrl || saved;
+  let want = null;
+  try { want = new URL(location.href).searchParams.get('v'); } catch (e) {}
   view = VIEWS.includes(want) ? want : 'days';
 }
 
