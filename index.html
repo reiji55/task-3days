@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-10-save">
+<meta name="app-version" content="2026-09-10-swipe">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -235,6 +235,9 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 
 /* ---- ページを横に並べて、指で送る ---- */
 #deck-clip{overflow-x:clip}          /* hidden にすると sticky が効かなくなる */
+/* 送っている間だけ縦も切る。#deck 側で切ると、切り取る枠が transform と一緒に
+   動いてしまい、ずらした先の面が枠から外れて画面が真っ白になる */
+#deck-clip.live{overflow:clip}
 #deck{
   display:flex;align-items:flex-start;width:100%;
   transition:transform .32s cubic-bezier(.25,.8,.35,1);
@@ -243,7 +246,7 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
 #deck > .pane.off{display:none}      /* 動かしている間は隣だけ off を外す */
 /* 動かしている間だけ。will-change は transform が none でも含みブロックを作るので、
    常時付けておくと週の見出しの sticky が画面ではなく #deck を基準にしてしまう */
-#deck.live{will-change:transform;overflow:hidden}
+#deck.live{will-change:transform}
 #deck.live .wk-head{position:static}
 
 /* ---- 表示の切り替え ---- */
@@ -1784,6 +1787,10 @@ const deck = () => document.getElementById('deck');
 const panes = () => VIEWS.map(v => document.getElementById('pane-' + v));
 const paneIndex = () => Math.max(0, VIEWS.indexOf(view));
 let sliding = false;
+// 面ごとに、どこまで下げて見ていたか。戻ってきたら同じところに戻す。
+// ボタンで送ると先頭、指で送ると元のまま、では気持ち悪いので両方ここに寄せる
+const scrollAt = {};
+const keepScroll = () => { scrollAt[view] = window.scrollY; };
 
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
@@ -1805,20 +1812,25 @@ function rest(index){
   d.style.transform = 'none';
   d.style.height = '';
   d.classList.remove('live');
+  document.getElementById('deck-clip').classList.remove('live');
   d.offsetHeight;                                   // ここまでを確定させる
   d.style.transition = '';
+  window.scrollTo(0, scrollAt[view] || 0);          // 前に見ていたところへ
   sliding = false;
 }
 
-// 隣を並べて、指やアニメーションで動かせる状態にする。
-// 全部出すと一番高い面に合わせて背が伸びるので、隣までにとどめる
+// 全部を並べて、指やアニメーションで動かせる状態にする。
+// 畳んだ面（display:none）は場所を取らないので、1枚でも隠すと後ろの面の
+// 位置がずれる。-100% × 何枚目、で当てるには全部を並べておく必要がある。
+// 背が伸びる分は、高さを留めて #deck-clip で切る
 function live(from){
   const d = deck();
-  // 隣を出すと背が高い方に合わさって、指の下の中身がずれる。今の高さで留める
-  const keep = d.offsetHeight;
-  panes().forEach((p, i) => p.classList.toggle('off', Math.abs(i - from) > 1));
+  // 端数まで含めて覚える。offsetHeight だと丸められて1pxずれる
+  const keep = d.getBoundingClientRect().height;
+  panes().forEach(p => p.classList.remove('off'));
   d.style.height = keep + 'px';
   d.classList.add('live');
+  document.getElementById('deck-clip').classList.add('live');
   d.style.transition = 'none';
   d.style.transform = `translateX(${-100 * from}%)`;
   d.offsetHeight;
@@ -1845,8 +1857,7 @@ function settle(from, index){
   };
   d.addEventListener('transitionend', finish);
   setTimeout(finish, 480);                          // 動かなかったときの保険
-  if (from === index) finish.timer = null;          // 位置が同じなら transitionend が来ない
-  requestAnimationFrame(() => {
+  requestAnimationFrame(() => {                     // 位置が同じなら transitionend が来ない
     if (d.style.transform === `translateX(${-100 * from}%)` && from === index) finish();
   });
 }
@@ -1859,13 +1870,13 @@ function applyView(){
 function setView(next){
   if (view === next || sliding) return;
   const from = paneIndex();
+  keepScroll();
   view = next;
   say('');
   viewState();
   sliding = true;
   live(from);
   requestAnimationFrame(() => settle(from, paneIndex()));
-  window.scrollTo(0, 0);
 }
 
 /* ---------- 横になぞって送る ----------
@@ -1909,7 +1920,7 @@ function setView(next){
     const last = VIEWS.length - 1;
     const index = go ? (dx < 0 ? Math.min(from + 1, last) : Math.max(from - 1, 0)) : from;
     sliding = true;
-    if (index !== from) { view = VIEWS[index]; viewState(); }
+    if (index !== from) { keepScroll(); view = VIEWS[index]; viewState(); }
     settle(from, index);
   }, { passive: true });
 })();
