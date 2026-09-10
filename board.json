@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-10T12:54:17+09:00",
+  "updated": "2026-09-10T12:54:26+09:00",
   "cards": [
     {
       "id": "toeic",
@@ -20,6 +20,11 @@
     {
       "id": "cmtuztlo9",
       "title": "い",
+      "created": "2026-09-10"
+    },
+    {
+      "id": "cmtuztuom",
+      "title": "う",
       "created": "2026-09-10"
     }
   ]
