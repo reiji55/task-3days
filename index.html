@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-11-tidy">
+<meta name="app-version" content="2026-09-11-days">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -23,7 +23,7 @@
   --accel:#1f6f4a; --accel-bg:#e4f0e9;
   --routine:#8a5a12; --routine-bg:#f6ecd9;
   --done:#9a9790; --today:#1c1b19;
-  --warn:#a8341f;
+  --warn:#a8341f; --due:#c4761a;
   --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -16px rgba(0,0,0,.18);
 }
 @media (prefers-color-scheme: dark){
@@ -33,7 +33,7 @@
     --accel:#7fd0a4; --accel-bg:#1b3128;
     --routine:#e3b169; --routine-bg:#332715;
     --done:#6a6760; --today:#eceae4;
-    --warn:#f0917c;
+    --warn:#f0917c; --due:#e2a049;
     --shadow:none;
   }
 }
@@ -76,27 +76,71 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 @media (max-width:359px){ .sub{display:none} }
 .reload:active{opacity:.6}
 
+/* ---- 日付のタブ。今日だけ「今日」を併記する ---- */
+.dayseg{display:flex;gap:7px;margin:0 0 16px}
+.dayseg button{
+  flex:1;min-width:0;appearance:none;cursor:pointer;font:inherit;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
+  border-radius:13px;padding:11px 6px;
+  font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;
+  font-variant-numeric:tabular-nums;
+}
+.dayseg button b{color:var(--due);font-size:12.5px;font-weight:700}
+.dayseg button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.dayseg button:active{opacity:.7}
+
 .day{margin:0 0 22px}
-.day-head{
-  display:flex; align-items:baseline; gap:8px;
-  padding:0 2px 8px; border-bottom:1px solid var(--line);
-  margin-bottom:10px;
+.day-line{display:flex;align-items:baseline;gap:10px;padding:0 3px;margin:0 0 14px}
+.day-date{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.day-count{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+/* ---- 終日／タイムライン／いつでも ---- */
+.grp{margin:0 0 20px}
+.grp-head{font-size:12px;color:var(--ink-3);margin:0 3px 9px}
+.grp-note{font-size:11px;color:var(--ink-3);margin:22px 3px 10px;
+  border-top:1px solid var(--line);padding-top:12px}
+.tl-row{display:grid;grid-template-columns:46px 1fr;gap:0 10px;align-items:start;margin-bottom:11px}
+.tl-at{
+  font-size:12px;color:var(--ink-3);text-align:right;padding-top:10px;
+  font-variant-numeric:tabular-nums;
 }
-.day-date{font-size:13px;font-weight:650;letter-spacing:.03em;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.day-rel{font-size:11px;color:var(--ink-3)}
-.day-count{margin-left:auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-.day.is-today .day-date{color:var(--today)}
-.day.is-today .day-head{border-bottom-color:var(--ink-3)}
-.day.is-today .day-rel{
-  color:var(--bg); background:var(--ink); border-radius:999px;
-  padding:1px 7px; font-weight:650;
+.tl-now{display:grid;grid-template-columns:46px 1fr;gap:0 10px;align-items:center;margin:4px 0 13px}
+.tl-now span{
+  font-size:12px;font-weight:700;color:var(--warn);text-align:right;
+  font-variant-numeric:tabular-nums;
 }
+.tl-now i{display:block;height:0;border-top:1.5px solid var(--warn);position:relative}
+.tl-now i::before{
+  content:"";position:absolute;left:-3px;top:-4px;width:8px;height:8px;
+  border-radius:50%;background:var(--warn);
+}
+/* タイムラインの札は枠を持たず、左の色の帯で案件を示す */
+/* 角の丸みは札と揃える。ずれると隅から後ろの赤い面がのぞく */
+.tl-row .task-wrap{margin-bottom:0;border-radius:9px}
+.tl-row .task-act{border-radius:9px}
+
+.tl-row .task{
+  /* 透かすと後ろの赤い面（削除）が出てしまう。地の色で塞ぐ */
+  background:var(--bg);border:0;box-shadow:none;border-radius:9px;
+  border-left:3px solid var(--c,var(--line));padding:8px 11px 9px;
+}
+.tl-row .task.now{background:color-mix(in srgb, var(--c) 15%, var(--panel))}
+.lead{
+  grid-column:1 / -1;display:flex;align-items:baseline;gap:8px;
+  font-size:11.5px;color:var(--ink-3);margin:0 0 5px;
+}
+.lead-to{font-variant-numeric:tabular-nums}
 
 .task-wrap{position:relative;margin-bottom:7px;border-radius:11px;overflow:hidden}
 .task-act{
   position:absolute;inset:0;display:flex;justify-content:flex-end;align-items:stretch;
   background:var(--warn);border-radius:11px;
+  /* 普段は消しておく。札とぴったり重なっていても、角の丸みのふちに赤が滲む */
+  opacity:0;transition:opacity .12s linear;
 }
+.task-wrap.swipe .task-act,
+.task-wrap.bare .task-act{opacity:1;transition:none}
 .task-del{
   appearance:none;border:0;background:transparent;cursor:pointer;
   width:88px;color:#fff;font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
@@ -125,8 +169,8 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .del:active{color:var(--warn)}
 button.box{cursor:pointer}
 button.box:active{transform:scale(.9)}
-.task.done .box{background:var(--ink-3);border-color:var(--ink-3)}
-.task.done .box::after{content:"";width:9px;height:5px;border:2px solid var(--panel);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.task.done .box{background:var(--accel);border-color:var(--accel)}
+.task.done .box::after{content:"";width:9px;height:5px;border:2px solid var(--bg);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
 .title{font-size:15px;font-weight:500;line-height:1.45;word-break:break-word}
 .task.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px;font-weight:400}
 
@@ -188,36 +232,15 @@ button.box:active{transform:scale(.9)}
 
 .empty{color:var(--ink-3);font-size:13px;padding:6px 2px 2px}
 
-/* ---- 昨日は1行に畳んでおく。今日を画面の上に出すため ---- */
-.day.is-past{margin-bottom:16px}
-.past-bar{
-  appearance:none;width:100%;display:flex;align-items:center;gap:9px;
-  border:1px solid var(--line);background:var(--panel);border-radius:11px;
-  padding:9px 12px;cursor:pointer;font:inherit;font-size:13px;color:var(--ink-2);
-  box-shadow:var(--shadow);
-}
-.past-bar:active{opacity:.7}
-.past-rel{font-size:11px;color:var(--ink-3)}
-.past-n{font-weight:600}
-.past-chev{
-  margin-left:auto;width:7px;height:7px;
-  border-right:1.6px solid var(--ink-3);border-bottom:1.6px solid var(--ink-3);
-  transform:rotate(-45deg);transition:transform .24s ease;
-}
-.day.is-past.open .past-chev{transform:rotate(45deg)}
 .past-move{
   appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
-  font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;cursor:pointer;
-  margin:7px 0 0;
+  font:inherit;font-size:12px;padding:5px 13px;border-radius:999px;cursor:pointer;
+  margin:0 0 16px;
 }
 .past-move:active{opacity:.6}
-.past-body{display:none;margin-top:9px}
-.day.is-past.open .past-body{display:block}
 .note{font-size:12px;color:var(--ink-3);text-align:center;margin-top:26px;line-height:1.7}
 .err{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;color:var(--ink-2);font-size:13px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
-details.other{margin-top:8px}
-details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6px 2px}
 
 #bar{
   display:flex;align-items:center;gap:8px;
@@ -269,10 +292,7 @@ details.other summary{font-size:12px;color:var(--ink-3);cursor:pointer;padding:6
   border:1px solid var(--ink);background:var(--ink);color:var(--bg);
 }
 #quick button:active{opacity:.6}
-.day.is-anytime .day-rel{
-  color:var(--ink-2); background:var(--line-soft); border-radius:999px;
-  padding:1px 7px;
-}
+
 
 /* ---- ページを横に並べて、指で送る ---- */
 #deck-clip{overflow-x:clip}          /* hidden にすると sticky が効かなくなる */
@@ -864,10 +884,11 @@ function tail(lines, headers, key){
   return end;
 }
 
-// 未完了のぶんを、メモ・引き継ぎごと別の日の末尾へ移す
+// 未完了のぶんを、メモ・引き継ぎごと別の日の末尾へ移す。何日分でも受ける
 const opCarry = (from, to) => src => {
   const doc = parse(src);
-  const list = (doc.days.get(from) || []).filter(t => !t.done);
+  const keys = Array.isArray(from) ? from : [from];
+  const list = keys.flatMap(k => (doc.days.get(k) || []).filter(t => !t.done));
   if (!list.length) return src;
 
   const cut = [];
@@ -1122,134 +1143,246 @@ function openEditor(card, task, kind){
   ok.addEventListener('click', () => close(true));
 }
 
-function renderDay(key, rel, tasks, isToday){
-  const sec = el('section', 'day' + (isToday ? ' is-today' : '') + (key === ANYTIME ? ' is-anytime' : ''));
-  const head = el('div','day-head');
-  head.append(el('span','day-date', label(key)), el('span','day-rel', rel));
-  const list = tasks || [];
-  if (list.length) head.append(el('span','day-count', `${list.filter(t=>t.done).length}/${list.length}`));
-  sec.append(head);
+/* ---------- 3日分の表示 ----------
+   日付でタブを分け、選んだ日だけを出す。今日だけ「今日」を併記する。
+   1日の中は 終日 → タイムライン → いつでも の順。
+   3日の窓から外れた過去の未完了は「未完了」タブにまとめる。 */
 
-  if (!list.length) { sec.append(el('div','empty','—')); return sec; }
+let dayAt = null;                  // 選んでいるタブ。描き直しても保つ
 
-  for (const t of list) {
-    const wrap = el('div','task-wrap');
-    const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : ''));
-    if (pin) {
-      const act = el('div','task-act');
-      const away = el('button','task-del','削除');
-      away.setAttribute('aria-label', '削除: ' + t.title);
-      away.addEventListener('click', () => {
-        edit(opRemove(t.id), `tasks: 削除（${t.title}）`);
-        draw();
-      });
-      act.append(away);
-      wrap.append(act);
-    }
+const short = key => { const [, m, d] = key.split('-'); return `${+m}/${+d}`; };
 
-    let box;
-    if (pin) {
-      box = el('button','box');
-      box.setAttribute('aria-label', (t.done ? '未完了に戻す: ' : '完了にする: ') + t.title);
-      box.addEventListener('click', () => {
-        edit(opDone(t.id, !t.done),
-          `tasks: ${t.done ? '未完了に戻す' : '完了'}（${t.title}）`, WAIT_TAP, `done:${t.id}`);
-        draw();
-      });
-    } else {
-      box = el('div','box');
-    }
-    card.append(box, el('div','title', t.title));
-
-    if (pin) {
-      const del = el('button','del','✕');
-      del.setAttribute('aria-label', '削除: ' + t.title);
-      del.addEventListener('click', () => {
-        if (!confirm(`「${t.title}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
-        edit(opRemove(t.id), `tasks: 削除（${t.title}）`);
-        draw();
-      });
-      card.append(del);
-    }
-
-    const meta = el('div','meta');
-    if (t.time) meta.append(el('span','tag t-time', t.time));
-    if (t.type) {
-      const k = TYPE_MAP[t.type] || '';
-      meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
-    }
-    if (t.proj) meta.append(el('span','tag t-proj', t.proj));
-    if (meta.childNodes.length) card.append(meta);
-
-    // 空の欄の追加ボタンは、カードを叩いたときだけ出す。常に並ぶと詰まって見える
-    if (pin && (!t.memo || !t.next)) {
-      const more = el('div','more');
-      if (!t.memo) {
-        const add = el('button','memo-add','＋メモ');
-        add.addEventListener('click', () => openEditor(card, t, 'memo'));
-        more.append(add);
-      }
-      if (!t.next) {
-        const add = el('button','next-add','＋引き継ぎ');
-        add.addEventListener('click', () => openEditor(card, t, 'next'));
-        more.append(add);
-      }
-      card.append(more);
-      card.addEventListener('click', e => {
-        if (e.target.closest('button, textarea, input, .memo, .next')) return;
-        card.classList.toggle('open');
-      });
-    }
-
-    if (t.memo) {
-      const memo = el('div','memo', t.memo);
-      if (pin) memo.addEventListener('click', () => openEditor(card, t, 'memo'));
-      card.append(memo);
-    }
-    if (t.next) {
-      const box = el('div','next');
-      box.append(el('span','who','引き継ぎ'), document.createTextNode(t.next));
-      if (pin) box.addEventListener('click', () => openEditor(card, t, 'next'));
-      card.append(box);
-    }
-    wrap.append(card);
-    sec.append(wrap);
-  }
-  return sec;
+// 時間帯を時計として読む。「終日」「午前」「空欄」は読めないので null
+function clock(s){
+  const m = String(s || '').match(/^(\d{1,2}):(\d{2})(?:\s*[-–—~〜]\s*(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  return {
+    from: Number(m[1]) * 60 + Number(m[2]),
+    to: m[3] == null ? null : Number(m[3]) * 60 + Number(m[4])
+  };
 }
 
-/* ---- 昨日は1行に畳む。今日を画面の上に出すため ---- */
+// 案件ごとに色を1つ。一度決めたら同じ色を使い続ける
+const hue = (() => {
+  const seen = new Map();
+  return name => {
+    const k = String(name || '').trim() || '—';
+    if (!seen.has(k)) seen.set(k, PALETTE[seen.size % PALETTE.length]);
+    return seen.get(k);
+  };
+})();
 
-let pastOpen = false;              // 昨日を開いているか。描き直しても畳まないよう覚える
+/* ---- タスク1枚 ---- */
 
-function renderPast(key, list, today){
-  const left = list.filter(t => !t.done).length;
-  const sec = el('section', 'day is-past' + (pastOpen ? ' open' : ''));
+function renderCard(t, lead){
+  const wrap = el('div','task-wrap');
+  const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : ''));
+  if (pin) {
+    const act = el('div','task-act');
+    const away = el('button','task-del','削除');
+    away.setAttribute('aria-label', '削除: ' + t.title);
+    away.addEventListener('click', () => {
+      edit(opRemove(t.id), `tasks: 削除（${t.title}）`);
+      draw();
+    });
+    act.append(away);
+    wrap.append(act);
+  }
 
-  const bar = el('button','past-bar');
-  bar.append(el('span','past-rel', '昨日'),
-             el('span','past-n', left ? `未完了${left}件` : `${list.length}件ぜんぶ完了`),
-             el('span','past-chev'));
-  bar.addEventListener('click', () => {
-    pastOpen = !pastOpen;
-    sec.classList.toggle('open', pastOpen);
-  });
-  sec.append(bar);
+  if (lead) card.append(lead);                      // タイムラインでは案件名と終わりの時刻
 
-  if (pin && left) {
-    const move = el('button','past-move', `まとめて今日へ（${left}件）`);
+  let box;
+  if (pin) {
+    box = el('button','box');
+    box.setAttribute('aria-label', (t.done ? '未完了に戻す: ' : '完了にする: ') + t.title);
+    box.addEventListener('click', () => {
+      edit(opDone(t.id, !t.done),
+        `tasks: ${t.done ? '未完了に戻す' : '完了'}（${t.title}）`, WAIT_TAP, `done:${t.id}`);
+      draw();
+    });
+  } else {
+    box = el('div','box');
+  }
+  card.append(box, el('div','title', t.title));
+
+  if (pin) {
+    const del = el('button','del','✕');
+    del.setAttribute('aria-label', '削除: ' + t.title);
+    del.addEventListener('click', () => {
+      if (!confirm(`「${t.title}」を消しますか？\n（GitHub の履歴には残ります）`)) return;
+      edit(opRemove(t.id), `tasks: 削除（${t.title}）`);
+      draw();
+    });
+    card.append(del);
+  }
+
+  const meta = el('div','meta');
+  if (!lead && t.time) meta.append(el('span','tag t-time', t.time));
+  if (t.type) {
+    const k = TYPE_MAP[t.type] || '';
+    meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
+  }
+  if (!lead && t.proj) meta.append(el('span','tag t-proj', t.proj));
+  if (meta.childNodes.length) card.append(meta);
+
+  // 空の欄の追加ボタンは、カードを叩いたときだけ出す。常に並ぶと詰まって見える
+  if (pin && (!t.memo || !t.next)) {
+    const more = el('div','more');
+    if (!t.memo) {
+      const add = el('button','memo-add','＋メモ');
+      add.addEventListener('click', () => openEditor(card, t, 'memo'));
+      more.append(add);
+    }
+    if (!t.next) {
+      const add = el('button','next-add','＋引き継ぎ');
+      add.addEventListener('click', () => openEditor(card, t, 'next'));
+      more.append(add);
+    }
+    card.append(more);
+    card.addEventListener('click', e => {
+      if (e.target.closest('button, textarea, input, .memo, .next')) return;
+      card.classList.toggle('open');
+    });
+  }
+
+  if (t.memo) {
+    const memo = el('div','memo', t.memo);
+    if (pin) memo.addEventListener('click', () => openEditor(card, t, 'memo'));
+    card.append(memo);
+  }
+  if (t.next) {
+    const nx = el('div','next');
+    nx.append(el('span','who','引き継ぎ'), document.createTextNode(t.next));
+    if (pin) nx.addEventListener('click', () => openEditor(card, t, 'next'));
+    card.append(nx);
+  }
+  wrap.append(card);
+  return { wrap, card };
+}
+
+/* ---- 1日分 ---- */
+
+function renderOne(key, list, anytime, todayKey){
+  const isToday = key === todayKey;
+  const sec = el('section','day' + (isToday ? ' is-today' : ''));
+
+  const line = el('div','day-line');
+  line.append(el('span','day-date', label(key)));
+  if (list.length) {
+    line.append(el('span','day-count',
+      `${list.filter(t => t.done).length} / ${list.length} 済`));
+  }
+  sec.append(line);
+
+  // 過ぎた日なら、残っているぶんを今日へ送れる
+  const left = list.filter(t => !t.done);
+  if (pin && key < todayKey && left.length) {
+    const move = el('button','past-move', `まとめて今日へ（${left.length}件）`);
     move.addEventListener('click', () => {
-      edit(opCarry(key, today), `tasks: ${left}件を今日へ繰り越し`);
+      edit(opCarry([key], todayKey), `tasks: ${left.length}件を今日へ繰り越し`);
       draw();
     });
     sec.append(move);
   }
 
-  const body = el('div','past-body');
-  body.append(renderDay(key, '', list, false));
-  sec.append(body);
+  const timed = [], allday = [];
+  for (const t of list) (clock(t.time) ? timed : allday).push(t);
+  timed.sort((a, b) => clock(a.time).from - clock(b.time).from);
+
+  if (allday.length) {
+    const g = el('div','grp');
+    g.append(el('div','grp-head','終日'));
+    for (const t of allday) g.append(renderCard(t).wrap);
+    sec.append(g);
+  }
+
+  if (timed.length) {
+    const g = el('div','grp');
+    g.append(el('div','grp-head','タイムライン'));
+    const tl = el('div','tl');
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    let drawn = !isToday;                            // 今日だけ「いま」の線を入れる
+
+    for (const t of timed) {
+      const at = clock(t.time);
+      if (!drawn && at.from > mins) { tl.append(nowLine(mins)); drawn = true; }
+
+      const lead = el('div','lead');
+      if (t.proj) lead.append(el('span','lead-proj', t.proj));
+      if (at.to != null) lead.append(el('span','lead-to', '〜' + hhmm(at.to)));
+
+      const row = el('div','tl-row');
+      row.append(el('div','tl-at', hhmm(at.from)));
+      const { wrap, card } = renderCard(t, lead.childNodes.length ? lead : null);
+      card.style.setProperty('--c', hue(t.proj || t.title));
+      if (isToday && !t.done && at.to != null && mins >= at.from && mins < at.to) {
+        card.classList.add('now');
+      }
+      row.append(wrap);
+      tl.append(row);
+    }
+    if (!drawn) tl.append(nowLine(mins));
+    g.append(tl);
+    sec.append(g);
+  }
+
+  if (!list.length) sec.append(el('div','empty','—'));
+
+  // 「いつでも」は日付に紐づかないので、どの日にも一緒に出す
+  if (anytime.length) {
+    const g = el('div','grp is-anytime');
+    g.append(el('div','grp-head','いつでも'));
+    for (const t of anytime) g.append(renderCard(t).wrap);
+    sec.append(g);
+  }
   return sec;
 }
+
+function nowLine(mins){
+  const row = el('div','tl-now');
+  row.append(el('span', null, hhmm(mins)), el('i'));
+  return row;
+}
+
+/* ---- 未完了タブ（3日の窓より前に残っているもの） ---- */
+
+function renderStale(days, stale, ahead, todayKey){
+  const sec = el('section','day is-stale');
+
+  const all = stale.flatMap(k => (days.get(k) || []).filter(t => !t.done));
+  if (pin && all.length) {
+    const move = el('button','past-move', `まとめて今日へ（${all.length}件）`);
+    move.addEventListener('click', () => {
+      edit(opCarry(stale, todayKey), `tasks: ${all.length}件を今日へ繰り越し`);
+      draw();
+    });
+    sec.append(move);
+  }
+
+  for (const k of stale) {
+    const left = (days.get(k) || []).filter(t => !t.done);
+    if (!left.length) continue;
+    const g = el('div','grp');
+    g.append(el('div','grp-head', label(k)));
+    for (const t of left) g.append(renderCard(t).wrap);
+    sec.append(g);
+  }
+
+  if (ahead.length) {
+    sec.append(el('div','grp-note','先の予定'));
+    for (const k of ahead) {
+      const g = el('div','grp');
+      g.append(el('div','grp-head', label(k)));
+      for (const t of (days.get(k) || [])) g.append(renderCard(t).wrap);
+      sec.append(g);
+    }
+  }
+  if (!sec.querySelector('.grp')) sec.append(el('div','empty','—'));
+  return sec;
+}
+
+/* ---- 全体 ---- */
 
 function render(days){
   const app = document.getElementById('app');
@@ -1257,35 +1390,42 @@ function render(days){
   app.textContent = '';
   const now = new Date();
   const todayKey = ymd(now);
-  const window3 = [-1, 0, 1].map(off => {
-    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + off);
-    return { key: ymd(dt), rel: ['昨日','今日','明日'][off + 1] };
-  });
+  const win = [-1, 0, 1].map(off =>
+    ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + off)));
+  const anytime = days.get(ANYTIME) || [];
 
-  for (const w of window3) {
-    const list = days.get(w.key) || [];
-    // 昨日は中身があるときだけ畳む。空なら今までどおり枠だけ
-    if (w.rel === '昨日' && list.length) app.append(renderPast(w.key, list, todayKey));
-    else app.append(renderDay(w.key, w.rel, list, w.key === todayKey));
+  // 3日の窓の外。過ぎていて残っているものと、先の予定
+  const out = [...days.keys()].filter(k => k !== ANYTIME && !win.includes(k)).sort();
+  const stale = out.filter(k => k < todayKey && (days.get(k) || []).some(t => !t.done));
+  const ahead = out.filter(k => k > todayKey && (days.get(k) || []).length);
+
+  const tabs = [];
+  if (stale.length || ahead.length) {
+    tabs.push({ key:'!', label:'未完了',
+      left: stale.reduce((n, k) => n + (days.get(k) || []).filter(t => !t.done).length, 0) });
   }
+  win.forEach((k, i) => tabs.push({
+    key: k,
+    label: i === 1 ? `今日 ${short(k)}` : short(k),
+    left: (days.get(k) || []).filter(t => !t.done).length
+  }));
+  if (!tabs.some(t => t.key === dayAt)) dayAt = todayKey;
 
-  // 「いつでも」は日付の窓の外だが、畳まない。忘れないための置き場なので常に見える
-  const anytime = days.get(ANYTIME);
-  if (anytime && anytime.length) app.append(renderDay(ANYTIME, '日付なし', anytime, false));
-
-  // 空のまま残った過去の日付は出さない（次の保存でファイルからも消える）
-  const others = [...days.keys()]
-    .filter(k => k !== ANYTIME && !window3.some(w => w.key === k))
-    .filter(k => days.get(k).length || k > todayKey)
-    .sort();
-  if (others.length) {
-    const det = el('details','other');
-    det.open = othersOpen;                                   // 開いていたら開いたまま
-    det.addEventListener('toggle', () => { othersOpen = det.open; });
-    det.append(el('summary', null, `その他の日（${others.length}日分）`));
-    for (const k of others) det.append(renderDay(k, '', days.get(k), false));
-    app.append(det);
+  const seg = el('div','dayseg');
+  for (const tab of tabs) {
+    const b = el('button', null);
+    b.dataset.key = tab.key;
+    b.setAttribute('aria-pressed', String(tab.key === dayAt));
+    b.append(document.createTextNode(tab.label));
+    if (tab.key !== dayAt && tab.left) b.append(el('b', null, String(tab.left)));
+    b.addEventListener('click', () => { dayAt = tab.key; draw(); window.scrollTo(0, 0); });
+    seg.append(b);
   }
+  app.append(seg);
+
+  app.append(dayAt === '!'
+    ? renderStale(days, stale, ahead, todayKey)
+    : renderOne(dayAt, days.get(dayAt) || [], anytime, todayKey));
 
   document.getElementById('stamp').textContent =
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
