@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- maximum-scale=1 は「入力欄に触ると勝手に拡大する」を止めるため。
+     iOS 10 以降、指で広げる拡大はこの指定に関係なくできる -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-11-fold">
+<meta name="app-version" content="2026-09-11-tune">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -130,9 +132,10 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
   border-left:3px solid var(--c,var(--line));padding:8px 11px 9px;
 }
 .tl-row .task.now{background:color-mix(in srgb, var(--c) 15%, var(--panel))}
-/* 帯の色。タイムラインは案件ごとに1色、終日といつでもは黒とグレーで置く */
-.grp.is-allday{--c:var(--ink)}
-.grp.is-anytime{--c:var(--line)}
+/* 帯の色。タイムラインは案件ごとに1色、それ以外は黒とグレーで置く。
+   黒＝いま背負っているもの（終日・残っている未完了）、グレー＝日付の無いもの・先の話 */
+.grp.is-allday,.grp.is-late{--c:var(--ink)}
+.grp.is-anytime,.grp.is-ahead{--c:var(--line)}
 
 /* 終日は題だけにして畳んでおく。叩くとタグとメモが出る */
 .task.fold{padding-top:7px;padding-bottom:8px;cursor:pointer}
@@ -235,7 +238,7 @@ button.box:active{transform:scale(.9)}
 }
 .memo-edit textarea{
   display:block;width:100%;min-height:64px;resize:vertical;
-  font:inherit;font-size:13px;line-height:1.6;color:var(--ink);
+  font:inherit;font-size:16px;line-height:1.55;color:var(--ink);
   background:var(--panel);border:1px solid var(--ink-3);border-radius:7px;padding:7px 10px;
 }
 .memo-edit .row{display:flex;gap:6px;margin-top:6px}
@@ -280,7 +283,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 #panel p{margin:0 0 9px;line-height:1.65}
 #panel ol{margin:0 0 9px;padding-left:1.3em;line-height:1.75}
 #panel input{
-  display:block;width:100%;font:inherit;font-size:13px;color:var(--ink);
+  display:block;width:100%;font:inherit;font-size:16px;color:var(--ink);
   background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin:0 0 8px;
 }
 #panel .row{display:flex;gap:6px}
@@ -296,7 +299,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 #quick{display:flex;gap:7px;margin:0 0 18px}
 #quick[hidden]{display:none}
 #quick input{
-  flex:1;min-width:0;font:inherit;font-size:14px;color:var(--ink);
+  flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);
   background:var(--panel);border:1px solid var(--line);border-radius:11px;
   padding:9px 12px;box-shadow:var(--shadow);
 }
@@ -472,7 +475,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .bd-search svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;
   stroke-width:1.8;stroke-linecap:round}
 .bd-search input{
-  flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);
+  flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);
   background:transparent;border:0;padding:4px 0;
 }
 .bd-search input:focus{outline:none}
@@ -1121,6 +1124,35 @@ const FIELD = {
   next: { label: '引き継ぎ', tag: 'next', word: '引き継ぎ' }
 };
 
+// 画面を作り直すと高さが変わる。目印の札が同じ高さに留まるよう、あとから合わせる。
+// 生のスクロール位置だけ戻しても、入力欄が消えたぶん中身がずれてしまう
+function anchor(id){
+  const find = () => document.querySelector(`.task[data-id="${CSS.escape(id)}"]`);
+  const at = () => { const n = find(); return n ? n.getBoundingClientRect().top : null; };
+  const was = at();
+  return () => {
+    if (was == null) return;
+    const now = at();
+    if (now != null && now !== was) window.scrollBy(0, now - was);
+  };
+}
+
+// キーボードが閉じきるまで、画面の見える高さは何度か変わる。そのたび合わせ直す。
+// 指が動いたらすぐやめる。持ち主がスクロールし始めたのを横取りしない
+function hold(fix){
+  const vv = window.visualViewport;
+  const stop = () => {
+    if (vv) vv.removeEventListener('resize', fix);
+    removeEventListener('touchstart', stop);
+    removeEventListener('wheel', stop);
+  };
+  if (vv) vv.addEventListener('resize', fix);
+  addEventListener('touchstart', stop, { passive: true });
+  addEventListener('wheel', stop, { passive: true });
+  requestAnimationFrame(fix);
+  setTimeout(stop, 600);
+}
+
 function openEditor(card, task, kind){
   if (card.querySelector('.memo-edit')) return;
   const f = FIELD[kind];
@@ -1151,9 +1183,13 @@ function openEditor(card, task, kind){
 
   const close = redraw => {
     editing = false;
+    const fix = anchor(task.id);                    // 消す前の高さを覚えておく
+    ta.blur();                                      // キーボードを引っ込める
     wrap.remove();
     if (shown) shown.hidden = false;
     if (redraw) draw();
+    fix();
+    hold(fix);                                      // キーボードが閉じきるまで見張る
   };
   cancel.addEventListener('click', () => { put(was); close(true); });   // 開く前に戻す
   ok.addEventListener('click', () => close(true));
@@ -1222,6 +1258,7 @@ function renderCard(t, lead, fold){
   } else {
     box = el('div','box');
   }
+  card.dataset.id = t.id;                           // 描き直したあと同じ札を見つける目印
   card.append(box, el('div','title', t.title));
 
   if (pin) {
@@ -1406,18 +1443,18 @@ function renderStale(days, stale, ahead, todayKey){
   for (const k of stale) {
     const left = (days.get(k) || []).filter(t => !t.done);
     if (!left.length) continue;
-    const g = el('div','grp');
+    const g = el('div','grp is-late');
     g.append(el('div','grp-head', label(k)));
-    for (const t of left) g.append(renderCard(t).wrap);
+    for (const t of left) g.append(flatRow(renderCard(t).wrap));
     sec.append(g);
   }
 
   if (ahead.length) {
     sec.append(el('div','grp-note','先の予定'));
     for (const k of ahead) {
-      const g = el('div','grp');
+      const g = el('div','grp is-ahead');
       g.append(el('div','grp-head', label(k)));
-      for (const t of (days.get(k) || [])) g.append(renderCard(t).wrap);
+      for (const t of (days.get(k) || [])) g.append(flatRow(renderCard(t).wrap));
       sec.append(g);
     }
   }
@@ -2238,10 +2275,6 @@ const deck = () => document.getElementById('deck');
 const panes = () => VIEWS.map(v => document.getElementById('pane-' + v));
 const paneIndex = () => Math.max(0, VIEWS.indexOf(view));
 let sliding = false;
-// 面ごとに、どこまで下げて見ていたか。戻ってきたら同じところに戻す。
-// ボタンで送ると先頭、指で送ると元のまま、では気持ち悪いので両方ここに寄せる
-const scrollAt = {};
-const keepScroll = () => { scrollAt[view] = window.scrollY; };
 
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
@@ -2266,7 +2299,8 @@ function rest(index){
   document.getElementById('deck-clip').classList.remove('live');
   d.offsetHeight;                                   // ここまでを確定させる
   d.style.transition = '';
-  window.scrollTo(0, scrollAt[view] || 0);          // 前に見ていたところへ
+  // 縦の位置はいじらない。送っている間ずっと見えていた位置のまま止める。
+  // 前に見ていたところへ戻すと、指を離した瞬間に画面が飛んで気持ちが悪い
   sliding = false;
 }
 
@@ -2321,7 +2355,6 @@ function applyView(){
 function setView(next){
   if (view === next || sliding) return;
   const from = paneIndex();
-  keepScroll();
   view = next;
   if (!dirty()) say('');
   viewState();
@@ -2373,7 +2406,7 @@ function setView(next){
     const last = VIEWS.length - 1;
     const index = go ? (dx < 0 ? Math.min(from + 1, last) : Math.max(from - 1, 0)) : from;
     sliding = true;
-    if (index !== from) { keepScroll(); view = VIEWS[index]; viewState(); }
+    if (index !== from) { view = VIEWS[index]; viewState(); }
     settle(from, index);
   }, { passive: true });
 })();
