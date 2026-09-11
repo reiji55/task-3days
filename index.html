@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-11-days">
+<meta name="app-version" content="2026-09-11-fold">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -100,7 +100,11 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .grp-head{font-size:12px;color:var(--ink-3);margin:0 3px 9px}
 .grp-note{font-size:11px;color:var(--ink-3);margin:22px 3px 10px;
   border-top:1px solid var(--line);padding-top:12px}
-.tl-row{display:grid;grid-template-columns:46px 1fr;gap:0 10px;align-items:start;margin-bottom:11px}
+/* 終日・いつでもの札も、左の時刻の欄ぶんだけ下げてタイムラインと頭を揃える */
+.tl-row,.flat-row{display:grid;grid-template-columns:46px 1fr;gap:0 10px;align-items:start}
+.tl-row{margin-bottom:11px}
+.flat-row{margin-bottom:9px}
+.flat-row > .task-wrap{grid-column:2}
 .tl-at{
   font-size:12px;color:var(--ink-3);text-align:right;padding-top:10px;
   font-variant-numeric:tabular-nums;
@@ -115,17 +119,29 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
   content:"";position:absolute;left:-3px;top:-4px;width:8px;height:8px;
   border-radius:50%;background:var(--warn);
 }
-/* タイムラインの札は枠を持たず、左の色の帯で案件を示す */
+/* この3つの節の札は枠を持たず、左の色の帯だけで見分ける */
 /* 角の丸みは札と揃える。ずれると隅から後ろの赤い面がのぞく */
-.tl-row .task-wrap{margin-bottom:0;border-radius:9px}
-.tl-row .task-act{border-radius:9px}
+.tl-row .task-wrap,.flat-row .task-wrap{margin-bottom:0;border-radius:9px}
+.tl-row .task-act,.flat-row .task-act{border-radius:9px}
 
-.tl-row .task{
+.tl-row .task,.flat-row .task{
   /* 透かすと後ろの赤い面（削除）が出てしまう。地の色で塞ぐ */
   background:var(--bg);border:0;box-shadow:none;border-radius:9px;
   border-left:3px solid var(--c,var(--line));padding:8px 11px 9px;
 }
 .tl-row .task.now{background:color-mix(in srgb, var(--c) 15%, var(--panel))}
+/* 帯の色。タイムラインは案件ごとに1色、終日といつでもは黒とグレーで置く */
+.grp.is-allday{--c:var(--ink)}
+.grp.is-anytime{--c:var(--line)}
+
+/* 終日は題だけにして畳んでおく。叩くとタグとメモが出る */
+.task.fold{padding-top:7px;padding-bottom:8px;cursor:pointer}
+.task.fold .title{font-size:14px}
+.task.fold:not(.open) .meta,
+.task.fold:not(.open) .memo,
+.task.fold:not(.open) .next{display:none}
+.fold-mark{grid-column:2 / -1;margin-top:3px;font-size:10.5px;color:var(--ink-3)}
+.task.fold.open .fold-mark{display:none}
 .lead{
   grid-column:1 / -1;display:flex;align-items:baseline;gap:8px;
   font-size:11.5px;color:var(--ink-3);margin:0 0 5px;
@@ -1149,6 +1165,8 @@ function openEditor(card, task, kind){
    3日の窓から外れた過去の未完了は「未完了」タブにまとめる。 */
 
 let dayAt = null;                  // 選んでいるタブ。描き直しても保つ
+// 叩いて開いた札。1操作ごとに全部描き直すので、覚えておかないと勝手に閉じる
+let opened = new Set();
 
 const short = key => { const [, m, d] = key.split('-'); return `${+m}/${+d}`; };
 
@@ -1174,9 +1192,10 @@ const hue = (() => {
 
 /* ---- タスク1枚 ---- */
 
-function renderCard(t, lead){
+function renderCard(t, lead, fold){
   const wrap = el('div','task-wrap');
-  const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : ''));
+  const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : '')
+    + (fold ? ' fold' : ''));
   if (pin) {
     const act = el('div','task-act');
     const away = el('button','task-del','削除');
@@ -1225,8 +1244,19 @@ function renderCard(t, lead){
   if (!lead && t.proj) meta.append(el('span','tag t-proj', t.proj));
   if (meta.childNodes.length) card.append(meta);
 
+  // 畳んでいる間は、案件名と「隠れている中身が何か」だけを小さく出す
+  if (fold) {
+    const marks = [];
+    if (t.time && t.time !== '終日') marks.push(t.time);
+    if (t.proj) marks.push(t.proj);
+    if (t.memo) marks.push('メモあり');
+    if (t.next) marks.push('引き継ぎあり');
+    if (marks.length) card.append(el('div','fold-mark', marks.join(' ・')));
+  }
+
   // 空の欄の追加ボタンは、カードを叩いたときだけ出す。常に並ぶと詰まって見える
-  if (pin && (!t.memo || !t.next)) {
+  const canAdd = pin && (!t.memo || !t.next);
+  if (canAdd) {
     const more = el('div','more');
     if (!t.memo) {
       const add = el('button','memo-add','＋メモ');
@@ -1239,9 +1269,13 @@ function renderCard(t, lead){
       more.append(add);
     }
     card.append(more);
+  }
+  // 畳んだ札を開くのと、追加ボタンを出すのは同じ「叩く」。掛け金は1つにする
+  if (canAdd || fold) {
+    if (opened.has(t.id)) card.classList.add('open');
     card.addEventListener('click', e => {
       if (e.target.closest('button, textarea, input, .memo, .next')) return;
-      card.classList.toggle('open');
+      if (card.classList.toggle('open')) opened.add(t.id); else opened.delete(t.id);
     });
   }
 
@@ -1280,6 +1314,7 @@ function renderOne(key, list, anytime, todayKey){
     const move = el('button','past-move', `まとめて今日へ（${left.length}件）`);
     move.addEventListener('click', () => {
       edit(opCarry([key], todayKey), `tasks: ${left.length}件を今日へ繰り越し`);
+      opened.clear();                                // 並びが変わるので開き直す
       draw();
     });
     sec.append(move);
@@ -1290,9 +1325,9 @@ function renderOne(key, list, anytime, todayKey){
   timed.sort((a, b) => clock(a.time).from - clock(b.time).from);
 
   if (allday.length) {
-    const g = el('div','grp');
+    const g = el('div','grp is-allday');
     g.append(el('div','grp-head','終日'));
-    for (const t of allday) g.append(renderCard(t).wrap);
+    for (const t of allday) g.append(flatRow(renderCard(t, null, true).wrap));
     sec.append(g);
   }
 
@@ -1333,7 +1368,7 @@ function renderOne(key, list, anytime, todayKey){
   if (anytime.length) {
     const g = el('div','grp is-anytime');
     g.append(el('div','grp-head','いつでも'));
-    for (const t of anytime) g.append(renderCard(t).wrap);
+    for (const t of anytime) g.append(flatRow(renderCard(t).wrap));
     sec.append(g);
   }
   return sec;
@@ -1342,6 +1377,13 @@ function renderOne(key, list, anytime, todayKey){
 function nowLine(mins){
   const row = el('div','tl-now');
   row.append(el('span', null, hhmm(mins)), el('i'));
+  return row;
+}
+
+// 時刻の無い札。左の時刻の欄は空けたまま、タイムラインと頭を揃える
+function flatRow(wrap){
+  const row = el('div','flat-row');
+  row.append(wrap);
   return row;
 }
 
@@ -1355,6 +1397,7 @@ function renderStale(days, stale, ahead, todayKey){
     const move = el('button','past-move', `まとめて今日へ（${all.length}件）`);
     move.addEventListener('click', () => {
       edit(opCarry(stale, todayKey), `tasks: ${all.length}件を今日へ繰り越し`);
+      opened.clear();                                // 並びが変わるので開き直す
       draw();
     });
     sec.append(move);
@@ -1418,7 +1461,9 @@ function render(days){
     b.setAttribute('aria-pressed', String(tab.key === dayAt));
     b.append(document.createTextNode(tab.label));
     if (tab.key !== dayAt && tab.left) b.append(el('b', null, String(tab.left)));
-    b.addEventListener('click', () => { dayAt = tab.key; draw(); window.scrollTo(0, 0); });
+    b.addEventListener('click', () => {
+      dayAt = tab.key; opened.clear(); draw(); window.scrollTo(0, 0);
+    });
     seg.append(b);
   }
   app.append(seg);
