@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-11-tune">
+<meta name="app-version" content="2026-09-13-week">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -25,7 +25,7 @@
   --accel:#1f6f4a; --accel-bg:#e4f0e9;
   --routine:#8a5a12; --routine-bg:#f6ecd9;
   --done:#9a9790; --today:#1c1b19;
-  --warn:#a8341f; --due:#c4761a;
+  --warn:#a8341f; --due:#c4761a; --ok:#1f8a4c;
   --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -16px rgba(0,0,0,.18);
 }
 @media (prefers-color-scheme: dark){
@@ -35,7 +35,7 @@
     --accel:#7fd0a4; --accel-bg:#1b3128;
     --routine:#e3b169; --routine-bg:#332715;
     --done:#6a6760; --today:#eceae4;
-    --warn:#f0917c; --due:#e2a049;
+    --warn:#f0917c; --due:#e2a049; --ok:#2fa862;
     --shadow:none;
   }
 }
@@ -327,7 +327,6 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 /* 動かしている間だけ。will-change は transform が none でも含みブロックを作るので、
    常時付けておくと週の見出しの sticky が画面ではなく #deck を基準にしてしまう */
 #deck.live{will-change:transform}
-#deck.live .wk-head{position:static}
 
 /* ---- 表示の切り替え ---- */
 /* ---- 下の切り替え。しるしだけで、真ん中がタスク ---- */
@@ -374,81 +373,141 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 
 /* ---- 週間タイムテーブル ---- */
 #week[hidden]{display:none}
-#week{--wh:26px;--gut:26px}
-.wk-bar{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:12px;color:var(--ink-3)}
+/* ---- 週の時間割：縦が日付、横が時刻 ----
+   1週間ぶんが縦にスクロールなしで収まるよう、行の高さを画面から割り出す。
+   下の選んだ日の中身だけスクロールして見る。 */
+#week{
+  --wgut:40px;                    /* 左の曜日の幅 */
+  --wticks:9;                     /* 目盛りの本数。描くときに入れ替える */
+  --rowh:clamp(34px, calc((100dvh - var(--wtop, 320px)) / 7), 74px);
+}
+.wk-bar{display:flex;align-items:center;gap:8px;margin:0 0 9px;font-size:12px;color:var(--ink-3)}
 .wk-range{font-weight:650;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .wk-fresh{margin-left:auto;font-variant-numeric:tabular-nums}
 .wk-bar .old{color:var(--warn);font-weight:600}
-.wk-head{display:grid;grid-template-columns:var(--gut) repeat(7,1fr);gap:0 2px;
-  position:sticky;top:0;z-index:2;background:var(--bg);padding:2px 0 4px}
-.wk-head div{text-align:center;font-size:10px;line-height:1.25;color:var(--ink-3)}
-.wk-head b{display:block;font-size:13px;font-weight:650;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.wk-head .sat,.wk-head .sat b{color:#2c6ba8}
-.wk-head .sun,.wk-head .sun b{color:#b03a3a}
-.wk-head .now{color:var(--bg);background:var(--ink);border-radius:6px}
-.wk-head .now b,.wk-head .now{color:var(--bg)}
-.wk-grid{display:grid;grid-template-columns:var(--gut) repeat(7,1fr);gap:0 2px;
-  position:relative;margin-top:7px}
-.wk-hours{position:relative}
-.wk-hours span{
-  position:absolute;right:3px;transform:translateY(-50%);
-  font-size:9px;color:var(--ink-3);font-variant-numeric:tabular-nums;
+
+.wk-grid{position:relative}
+.wk-top{display:flex;align-items:flex-end;height:21px;margin-bottom:5px}
+.wk-pad{flex:none;width:var(--wgut)}
+.wk-rule{position:relative;flex:1;height:21px}
+.wk-tick{
+  position:absolute;top:0;transform:translateX(-50%);
+  font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums;
+  padding:1px 6px;border-radius:999px;line-height:1.3;white-space:nowrap;
+  background:var(--panel);border:1px solid var(--line);
 }
-.wk-col{
-  position:relative;border-radius:5px;
-  background:
-    repeating-linear-gradient(var(--line-soft) 0 1px, transparent 1px calc(var(--wh) / 2));
-  box-shadow:inset 0 0 0 1px var(--line-soft);
+.wk-tick.on{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:700}
+
+.wk-row{display:flex;align-items:stretch;margin-bottom:5px}
+.wk-d{
+  flex:none;width:var(--wgut);display:flex;flex-direction:column;
+  align-items:flex-end;justify-content:center;padding-right:7px;cursor:pointer;
 }
-.wk-col.today{box-shadow:inset 0 0 0 1px var(--ink-3)}
+.wk-d b{font-size:11.5px;line-height:1.15;font-weight:650;color:var(--ink-2)}
+.wk-d span{font-size:9px;line-height:1.15;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.wk-d.sat b{color:#2c6ba8}
+.wk-d.sun b{color:#b03a3a}
+/* 下に中身を出している日を、黒く塗って示す */
+.wk-row.on .wk-d{
+  background:var(--ink);border-radius:10px;padding:4px 5px;margin-right:5px;
+  width:calc(var(--wgut) - 5px);align-items:center;
+}
+.wk-row.on .wk-d b,.wk-row.on .wk-d span{color:var(--bg);font-weight:700}
+
+.wk-stack{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.wk-trk{
+  position:relative;flex:none;height:var(--rowh);border-radius:8px;
+  background:var(--line-soft);
+  background-image:repeating-linear-gradient(to right,
+    transparent 0 calc(100% / var(--wticks) - 1px),
+    var(--line) calc(100% / var(--wticks) - 1px), var(--line) calc(100% / var(--wticks)));
+}
+.wk-row.today .wk-trk{background-color:var(--panel);box-shadow:inset 0 0 0 1.5px var(--ink-3)}
+/* 帯に入りきらなかった名前は、その日の下の行に時刻つきで並べる */
+.wk-under:empty{display:none}
+.wk-under{display:flex;flex-wrap:wrap;gap:2px 9px;padding-left:1px}
+.wk-chip{
+  display:inline-flex;align-items:center;gap:4px;font-size:10px;line-height:1.3;
+  color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;cursor:pointer;
+}
+.wk-chip i{width:6px;height:6px;border-radius:2px;background:var(--c);flex:none}
+.wk-chip em{font-style:normal;font-weight:700;font-size:9.5px;padding:0 5px;border-radius:999px}
+.wk-chip em.done{color:var(--ok);background:color-mix(in srgb, var(--ok) 14%, transparent)}
+.wk-chip em.miss{color:var(--warn);background:color-mix(in srgb, var(--warn) 14%, transparent)}
+
 .ev{
-  position:absolute;left:1px;right:1px;overflow:hidden;
-  border-radius:4px;border-left:2.5px solid var(--c);
+  position:absolute;overflow:hidden;border-radius:6px;
   background:color-mix(in srgb, var(--c) 15%, var(--panel));
-  color:var(--ink);font-size:9px;line-height:1.24;padding:1px 3px;
-  cursor:pointer;
+  border-left:3px solid var(--c);padding:3px 4px 0;cursor:pointer;
 }
-.ev b{font-weight:650}
-.ev .rest{color:var(--ink-2)}
-.ev.dim .rest{color:var(--ink-3)}
-.ev.dim{border-left-color:var(--ink-3);background:var(--line-soft);color:var(--ink-3)}
-.ev .t{display:block;font-size:8px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.ev.dim .t{color:var(--ink-3)}
-.ev.sel{outline:2px solid var(--ink);outline-offset:-1px}
-.wk-now{position:absolute;left:0;right:0;height:0;border-top:1.5px solid var(--warn);z-index:1;pointer-events:none}
-.wk-detail{
-  margin:12px 0 0;padding:11px 13px;border-radius:11px;
-  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
-  font-size:13px;line-height:1.6;
+.ev .nm{
+  display:block;font-size:9.5px;line-height:1.18;color:var(--ink);
+  white-space:normal;word-break:break-all;
 }
-.wk-detail .when{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.wk-detail .where{font-size:12px;color:var(--ink-3)}
-.wk-detail[hidden]{display:none}
-.wk-detail.can-tap{cursor:pointer}
-.wk-detail .hint{font-size:11px;color:var(--ink-3);margin-top:5px}
-.wk-detail .state{font-weight:650}
-.wk-detail .state.done{color:#1f8a4c}
-.wk-detail .state.miss{color:var(--warn)}
-
-/* やった⭕️／やらなかった❌。枠いっぱいに重ねる */
-.ev.marked .rest,.ev.marked .t{opacity:.35}
-.ev.marked b{opacity:.45}
-.mark{
-  position:absolute;inset:0;pointer-events:none;
-  display:grid;place-items:center;padding:1px;
+.ev.nolabel .nm{display:none}
+/* 睡眠・生活時間。逆向きの細い線で、済んだ枠と見間違えないようにする */
+.ev.dim{
+  border-left-color:transparent;cursor:default;opacity:.6;
+  background:repeating-linear-gradient(45deg, var(--line) 0 1px, transparent 1px 9px);
 }
-.mark svg{width:100%;height:100%;max-width:100%;max-height:100%}
-.ev.done{border-left-color:#1f8a4c}
-.ev.miss{border-left-color:#e5231b}
-
+/* 済んだ枠は、枠の色の濃い斜線を字の上からそのまま被せる */
+.ev.done::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--c) 62%, transparent) 0 3px, transparent 3px 8px);
+}
+.ev.sel{box-shadow:inset 0 0 0 2px var(--ink)}
 /* 現在時刻より手前は色を落とす。またいでいる枠は過ぎた分だけ */
 .ev .gone{
-  position:absolute;left:0;right:0;top:0;height:var(--gone,0);
-  background:var(--bg);opacity:.62;pointer-events:none;border-radius:3px 3px 0 0;
+  position:absolute;left:0;top:0;bottom:0;width:var(--gone,0);
+  background:var(--bg);opacity:.34;pointer-events:none;
 }
 .ev.gone-all{border-left-color:var(--ink-3)}
-.ev.gone-all.done{border-left-color:#7fae8f}
-.ev.gone-all.miss{border-left-color:#e08a84}
+
+.wk-now{position:absolute;top:-4px;bottom:-4px;width:0;z-index:3;
+  border-left:2px solid var(--warn);pointer-events:none}
+.wk-now i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;
+  background:var(--warn)}
+.wk-line{position:absolute;top:23px;bottom:0;width:0;z-index:2;pointer-events:none;
+  border-left:1.5px dashed color-mix(in srgb, var(--warn) 45%, transparent)}
+
+/* ---- 選んだ日の中身。ここで印を付ける ---- */
+.wk-cap{font-size:11px;color:var(--ink-3);margin:18px 0 10px;letter-spacing:.04em}
+.wk-cap span{opacity:.7}
+.wkli{display:grid;grid-template-columns:38px 1fr;gap:0 9px;margin-bottom:10px}
+.wkli-at{
+  font-size:11.5px;color:var(--ink-3);text-align:right;padding-top:18px;
+  font-variant-numeric:tabular-nums;
+}
+.wkli-card{
+  display:flex;align-items:center;gap:12px;min-height:62px;
+  background:var(--bg);border-left:3px solid var(--c);border-radius:9px;padding:9px 12px;
+}
+.wkli.can-tap .wkli-card{cursor:pointer}
+.wkli-txt{min-width:0}
+.wkli-nm{font-size:14px;line-height:1.4;word-break:break-word}
+.wkli-tm{font-size:11px;color:var(--ink-3);margin-top:2px;font-variant-numeric:tabular-nums}
+.wkli-where{font-size:11px;color:var(--ink-3)}
+.wkli.done .wkli-card{background:color-mix(in srgb, var(--ok) 7%, var(--bg))}
+.wkli.miss .wkli-card{background:color-mix(in srgb, var(--warn) 6%, var(--bg))}
+.wkli.done .wkli-nm,.wkli.miss .wkli-nm{color:var(--ink-2)}
+/* 印は点線の四角にそのまま収まる。付くときだけ、すっと出る */
+.stamp{
+  flex:none;width:46px;height:46px;border-radius:13px;display:grid;place-items:center;
+  border:2px dashed color-mix(in srgb, var(--ink-3) 45%, transparent);
+}
+.stamp svg{width:32px;height:32px;fill:none;stroke:#fff;stroke-width:4.2;
+  stroke-linecap:round;stroke-linejoin:round}
+.wkli.done .stamp,.wkli.miss .stamp{border:0;animation:stamp-in .22s cubic-bezier(.3,1.5,.5,1)}
+.wkli.done .stamp{background:var(--ok);
+  box-shadow:0 3px 10px color-mix(in srgb, var(--ok) 38%, transparent)}
+.wkli.miss .stamp{background:var(--warn);
+  box-shadow:0 3px 10px color-mix(in srgb, var(--warn) 34%, transparent)}
+@keyframes stamp-in{from{transform:scale(.55);opacity:.15}to{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .wkli.done .stamp,.wkli.miss .stamp{animation:none}
+}
+.wk-empty{font-size:12.5px;color:var(--ink-3);padding:4px 2px 2px}
 
 /* ---- ボード（やり方を書き溜めておく読み物） ----
    一覧は色付きのカードを重ねて置き、タップすると全画面の詳細になる。
@@ -599,32 +658,38 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 }
 .bd-del:active{color:var(--warn);border-color:var(--warn)}
 
-/* ---- 印刷（A4横1枚） ---- */
+/* ---- 印刷（A4横1枚） ----
+   縦が日付・横が時刻は、横長の紙にそのまま合う。幅があるので
+   ほとんどの予定が帯の中に名前を持てる。 */
 @media print{
   html,body{background:#fff;color:#000}
-  header,#bar,#panel,#quick,.note,#wk-detail,#tabs,.reload,.sub,#wk-print,
-  #bd-detail,#toast{display:none !important}
+  header,#bar,#panel,#quick,.note,#tabs,.reload,.sub,#wk-print,
+  #bd-detail,#toast,.wk-day{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
   #pane-days,#pane-board{display:none !important}
   #pane-week{display:block !important}
   .wrap{max-width:none;margin:0;padding:0}
-  #week{--wh:7.6mm;--gut:7.5mm}
-  .wk-bar{margin:0 0 1mm;font-size:8.5pt;color:#000}
+  #week{--wgut:17mm;--rowh:16mm}
+  .wk-bar{margin:0 0 2mm;font-size:8.5pt;color:#000}
   .wk-range{font-size:11pt;color:#000}
-  .wk-head{position:static;background:#fff;padding:0 0 .8mm}
-  .wk-head div{font-size:8pt;color:#000}
-  .wk-head b{font-size:11pt;color:#000}
-  .wk-head .now{background:none;color:#000}
-  .wk-head .now b{color:#000}
-  .wk-grid{margin-top:1.5mm}
-  .wk-col{box-shadow:inset 0 0 0 .3mm #d5d8de;background:none}
-  .wk-col.today{box-shadow:inset 0 0 0 .5mm #555}
-  .wk-hours span{font-size:7.5pt;color:#333}
-  .ev{font-size:7.5pt;line-height:1.3;border-left-width:1mm;padding:.6mm 1mm}
-  .ev .t{font-size:7pt;color:#333}
-  .ev.dim{background:#f2f2f2;color:#555}
-  .wk-now{display:none}
+  .wk-top{height:5mm;margin-bottom:1.5mm}
+  .wk-rule{height:5mm}
+  .wk-tick{font-size:8pt;color:#000;background:#fff;border-color:#d5d8de;padding:.3mm 1.4mm}
+  .wk-tick.on{background:#000;border-color:#000;color:#fff}
+  .wk-row{margin-bottom:2mm}
+  .wk-d b{font-size:11pt;color:#000} .wk-d span{font-size:8pt;color:#333}
+  .wk-row.on .wk-d{background:none;padding:0;margin-right:0;width:var(--wgut);
+    align-items:flex-end}
+  .wk-row.on .wk-d b,.wk-row.on .wk-d span{color:#000}
+  .wk-trk{box-shadow:inset 0 0 0 .3mm #d5d8de;background:#fff;background-image:none}
+  .wk-row.today .wk-trk{box-shadow:inset 0 0 0 .6mm #555;background:#fff}
+  .ev{padding:1mm 1.5mm;border-left-width:1mm}
+  .ev .nm{font-size:9pt;line-height:1.3;color:#000}
+  .ev.dim{background:#f2f2f2;opacity:1}
+  .wk-under{gap:.5mm 4mm}
+  .wk-chip{font-size:8.5pt;color:#333}
+  .wk-now,.wk-line,.ev .gone{display:none !important}
 }
 @page{size:A4 landscape;margin:8mm}
 </style>
@@ -699,9 +764,8 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
           <span class="wk-fresh" id="wk-fresh"></span>
           <button class="gear" id="wk-print" style="margin-left:8px">印刷</button>
         </div>
-        <div class="wk-head" id="wk-head"></div>
         <div class="wk-grid" id="wk-grid"></div>
-        <div class="wk-detail" id="wk-detail" hidden></div>
+        <div class="wk-day" id="wk-day"></div>
       </section>
 
       <p class="note" id="wk-foot">予定は <code>week.json</code>。実体は Google カレンダーで、<br>毎週月曜の朝に写しが入れ替わります。</p>
@@ -1527,7 +1591,6 @@ function showMode(){
    中身の形は weekplan スキルの events.json と同じ。 */
 
 let weekErr = '';
-let selected = null;          // 詳細を開いている予定のブロック
 let weekSha = null;           // week.json の blob SHA。書き込みに要る
 let weekBusy = null;          // 保存中の Promise。連打しても直列に流す
 
@@ -1571,13 +1634,12 @@ function groupOf(summary){
   return (s.split(/[｜|／/（(【[]/)[0] || s).trim() || s;
 }
 
-// 予定を7つの列に切り分ける。日をまたぐ予定は列ごとに分けて置く
-function weekBlocks(w){
+// 予定を7日ぶんに切り分ける。日をまたぐ予定は日ごとに分けて置く
+function weekBlocks(w, h0, h1){
   const base = dayNo(w.week);
-  const h0 = Number(w.start_hour ?? 5), h1 = Number(w.end_hour ?? 26);
   const dim = Array.isArray(w.dim) ? w.dim : DIM_DEFAULT;
   const colors = new Map();
-  const cols = Array.from({ length: 7 }, () => []);
+  const days = Array.from({ length: 7 }, () => []);
 
   for (const e of (w.events || [])) {
     const s = wall(e.start), t = wall(e.end);
@@ -1594,18 +1656,35 @@ function weekBlocks(w){
       const lo = d * 1440 + h0 * 60, hi = d * 1440 + h1 * 60;
       const a = Math.max(from, lo), b = Math.min(to, hi);
       if (b - a < 5) continue;                       // 5分未満の切れ端は出さない
-      cols[d].push({
-        ev: e, top: a - lo, len: b - a, abs: a, dim: faint,
+      days[d].push({
+        ev: e, top: a - lo, len: b - a, abs: a, dim: faint, name: g,
         color: e.color || colors.get(g),
         head: a === from                             // 続きの断片には時刻を出さない
       });
     }
   }
-  cols.forEach(pack);
-  return cols;
+  days.forEach(pack);
+  return days;
 }
 
-// 重なった予定を横に並べる。先に始まったものから空いている列に入れる
+// 予定のある時間帯に窓を寄せる。1日ぶんが画面の幅に収まるので、
+// 誰も使っていない深夜を捨てるとその分だけ字が入る
+function weekWindow(w){
+  const lo0 = Number(w.start_hour ?? 5), hi0 = Number(w.end_hour ?? 26);
+  let lo = Infinity, hi = -Infinity;
+  for (const list of weekBlocks(w, lo0, hi0)) {
+    for (const b of list) {
+      if (b.dim) continue;
+      lo = Math.min(lo, b.top); hi = Math.max(hi, b.top + b.len);
+    }
+  }
+  if (!isFinite(lo)) return [lo0, hi0];
+  const a = Math.max(lo0, Math.floor(lo / 60) + lo0 - 1);
+  const b = Math.min(hi0, Math.ceil(hi / 60) + lo0 + 1);
+  return b - a >= 6 ? [a, b] : [lo0, hi0];
+}
+
+// 重なった予定を上下に分ける。先に始まったものから空いている段に入れる
 function pack(list){
   list.sort((a, b) => a.top - b.top || b.len - a.len);
   let cluster = [], end = -1;
@@ -1628,57 +1707,78 @@ function pack(list){
   flush();
 }
 
-// 下の詳細欄の中身を書く。開いている予定はここで持つ
-function drawDetail(ev){
-  const box = document.getElementById('wk-detail');
-  const s = wall(ev.start), t = wall(ev.end);
+/* ---- 下に出す「選んだ日」 ---- */
+
+let wkDay = null;             // 週の頭から何日目を下に出しているか
+let wkWin = [5, 26];          // いま描いている時間の窓
+
+const STAMP_OK = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
+  '<path d="M7 16.8l6 6L25 10.5"/></svg>';
+const STAMP_NG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
+  '<path d="M9.5 9.5l13 13M22.5 9.5l-13 13"/></svg>';
+
+// 選んだ日の予定を縦に並べる。印はここで付ける
+function renderWkDay(){
+  const box = document.getElementById('wk-day');
   box.textContent = '';
-  box.append(el('div', null, ev.summary));
-  box.append(el('div','when',
-    `${dayLabel(s.day)} ${hhmm(s.min)} – ${hhmm(t.min)}` +
-    (t.day !== s.day ? `（${dayLabel(t.day)}）` : '')));
-  if (ev.location) box.append(el('div','where', ev.location));
+  if (!week) return;
+  const base = dayNo(week.week);
+  if (wkDay == null) wkDay = 0;
 
-  const st = ev.status || '';
-  const line = el('div','hint');
-  if (pin && !weekSha) {
-    line.textContent = (st ? MARK_LABEL[st] + '　' : '') + '印はいま変えられません（更新を押してください）';
-  } else if (pin) {
-    line.append(document.createTextNode('いま：'));
-    line.append(el('span', 'state' + (st ? ' ' + st : ''),
-      st ? MARK_LABEL[st] : '（印なし）'));
-    line.append(document.createTextNode(
-      `　タップで ${st === '' ? '⭕️' : st === 'done' ? '❌' : '印なし'} に`));
-  } else {
-    line.textContent = st ? MARK_LABEL[st] : '印を付けるには編集を有効にしてください';
+  const cap = el('div','wk-cap');
+  cap.append(document.createTextNode(dayLabel(base + wkDay) + ' の予定'));
+  cap.append(el('span', null, pin
+    ? '　叩くと 印なし → ⭕️ → ❌ と回る'
+    : '　印を付けるには編集を有効にしてください'));
+  box.append(cap);
+
+  const list = weekBlocks(week, wkWin[0], wkWin[1])[wkDay]
+    .filter(b => !b.dim).sort((a, b) => a.top - b.top);
+  if (!list.length) { box.append(el('div','wk-empty','この日は空です')); return; }
+
+  for (const b of list) {
+    const st = b.ev.status || '';
+    const row = el('div','wkli' + (st ? ' ' + st : '') + (pin ? ' can-tap' : ''));
+    row.style.setProperty('--c', b.color);
+    row.append(el('div','wkli-at', hhmm(wkWin[0] * 60 + b.top)));
+
+    const card = el('div','wkli-card');
+    const stamp = el('span','stamp');
+    if (st) stamp.innerHTML = st === 'done' ? STAMP_OK : STAMP_NG;
+    const txt = el('div','wkli-txt');
+    txt.append(el('div','wkli-nm', b.ev.summary));
+    txt.append(el('div','wkli-tm', '〜' + hhmm(wkWin[0] * 60 + b.top + b.len)));
+    if (b.ev.location) txt.append(el('div','wkli-where', b.ev.location));
+    card.append(stamp, txt);
+    row.append(card);
+
+    if (pin) card.addEventListener('click', () => cycleStatus(b.ev));
+    box.append(row);
   }
-  box.append(line);
-  box.classList.toggle('can-tap', !!pin && !!weekSha);
-  box.hidden = false;
 }
 
-function showEvent(b, node){
-  const box = document.getElementById('wk-detail');
-  document.querySelectorAll('.ev.sel').forEach(n => n.classList.remove('sel'));
-  if (selected === node) { selected = null; box.hidden = true; return; }
-  selected = node;
-  selectedEv = b.ev;
-  node.classList.add('sel');
-  drawDetail(b.ev);
-}
-
-let selectedEv = null;        // 詳細欄に出している予定（week.events の中の1本）
-
-// 詳細欄をタップ → 印なし → ⭕️ → ❌ → 印なし と回す
-function cycleStatus(){
-  if (!pin || !selectedEv || !week) return;
+// 印なし → ⭕️ → ❌ → 印なし
+function cycleStatus(ev){
+  if (!pin || !ev || !week) return;
   if (!weekSha) { say('印はいま変えられません。更新を押してください', true); return; }
-  selectedEv.status = NEXT_STATUS[selectedEv.status || ''] || undefined;
-  if (!selectedEv.status) delete selectedEv.status;
-  const label = selectedEv.status ? MARK_LABEL[selectedEv.status] : '印なし';
-  drawDetail(selectedEv);
+  ev.status = NEXT_STATUS[ev.status || ''] || undefined;
+  if (!ev.status) delete ev.status;
+  const label = ev.status ? MARK_LABEL[ev.status] : '印なし';
   paintMarks();
-  saveWeek(`week: ${label}（${selectedEv.summary}）`);
+  renderWkDay();
+  saveWeek(`week: ${label}（${ev.summary}）`);
+}
+
+// 表の枠を叩いたときは ⭕️ だけを入れ替える。
+// 表には❌の見た目が無いので、3つ回すと何も起きないように見えてしまう
+function toggleDone(ev){
+  if (!pin || !ev || !week) return;
+  if (!weekSha) { say('印はいま変えられません。更新を押してください', true); return; }
+  const was = ev.status === 'done';
+  if (was) delete ev.status; else ev.status = 'done';
+  paintMarks();
+  renderWkDay();
+  saveWeek(`week: ${was ? '印なし' : 'やった'}（${ev.summary}）`);
 }
 
 // 現在時刻より手前を塗りつぶす。1分ごとに塗り直すだけで作り直さない
@@ -1687,35 +1787,30 @@ function paintGone(){
   const base = dayNo(week.week);
   const now = new Date();
   const mins = (dayNo(ymd(now)) - base) * 1440 + now.getHours() * 60 + now.getMinutes();
-  document.querySelectorAll('.wk-col .ev').forEach(n => {
+  document.querySelectorAll('.wk-trk .ev').forEach(n => {
     const b = n._blk;
     if (!b) return;
-    const from = b.abs, to = b.abs + b.len;          // 週の頭からの分
-    const past = Math.max(0, Math.min(mins - from, b.len));
+    const to = b.abs + b.len;
+    const past = Math.max(0, Math.min(mins - b.abs, b.len));
     n.classList.toggle('gone-all', mins >= to);
     let layer = n.querySelector('.gone');
     if (!past) { if (layer) layer.remove(); return; }
     if (!layer) { layer = el('div','gone'); n.prepend(layer); }
-    // ちょうど終わっている枠は 100% にする。掛け算だと1px はみ出す
-    layer.style.setProperty('--gone', past >= b.len ? '100%' : `calc(var(--wh) * ${past / 60})`);
+    layer.style.setProperty('--gone', past >= b.len ? '100%' : (past / b.len * 100) + '%');
   });
 }
 
-// ブロックの上の印だけ描き直す。作り直さないので画面が跳ねない
+// 印だけ塗り直す。作り直さないので画面が跳ねない
 function paintMarks(){
-  document.querySelectorAll('.wk-col .ev').forEach(n => {
-    const ev = n._ev;
-    const st = (ev && ev.status) || '';
-    n.classList.toggle('done', st === 'done');
-    n.classList.toggle('miss', st === 'miss');
-    n.classList.toggle('marked', !!st);
-    const old = n.querySelector('.mark');
+  document.querySelectorAll('.wk-trk .ev').forEach(n => {
+    const st = (n._ev && n._ev.status) || '';
+    n.classList.toggle('done', st === 'done');       // 表に出るのは⭕️だけ
+  });
+  document.querySelectorAll('.wk-under .wk-chip').forEach(n => {
+    const st = (n._ev && n._ev.status) || '';
+    const old = n.querySelector('em');
     if (old) old.remove();
-    if (st) {
-      const m = el('div','mark');
-      m.innerHTML = MARK[st];
-      n.append(m);
-    }
+    if (st === 'done') n.append(el('em','done','済'));
   });
 }
 
@@ -1724,6 +1819,7 @@ async function saveWeek(message){
     say('保存中…');
     try {
       const res = await fetch(`${API}?file=week`, {
+
         method:'PUT',
         headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
         body: JSON.stringify({ text: JSON.stringify(week, null, 2) + '\n', sha: weekSha, message })
@@ -1743,11 +1839,9 @@ async function saveWeek(message){
 
 function renderWeek(){
   const w = week;
-  const head = document.getElementById('wk-head');
   const grid = document.getElementById('wk-grid');
-  head.textContent = ''; grid.textContent = '';
-  document.getElementById('wk-detail').hidden = true;
-  selected = null;
+  grid.textContent = '';
+  document.getElementById('wk-day').textContent = '';
 
   if (!w) {
     grid.append(el('div', weekErr ? 'err' : 'empty',
@@ -1755,74 +1849,77 @@ function renderWeek(){
     return;
   }
 
-  const h0 = Number(w.start_hour ?? 5), h1 = Number(w.end_hour ?? 26);
-  const hours = h1 - h0;
-  // 高さは px で持たず --wh（CSS 側）を掛けて出す。印刷では --wh だけ差し替えれば
-  // 全部そのまま伸び縮みする
-  const at = n => `calc(var(--wh) * ${n})`;
+  wkWin = weekWindow(w);
+  const [h0, h1] = wkWin;
+  const span = (h1 - h0) * 60;
+  const pct = n => (n / span * 100).toFixed(3) + '%';
 
   const base = dayNo(w.week);
   const now = new Date();
-  const todayCol = dayNo(ymd(now)) - base;
+  const today = dayNo(ymd(now)) - base;
+  const nowMin = now.getHours() * 60 + now.getMinutes() - h0 * 60;
+  if (wkDay == null) wkDay = today >= 0 && today < 7 ? today : 0;
 
-  // 見出し（曜日と日）
-  head.append(el('div'));
+  // 目盛りは多くても9本まで。丸いピルで並べ、いまの時間だけ黒く塗る
+  const step = Math.max(1, Math.ceil((h1 - h0) / 9));
+  document.getElementById('week').style.setProperty('--wticks', String((h1 - h0) / step));
+
+  const top = el('div','wk-top');
+  top.append(el('div','wk-pad'));
+  const rule = el('div','wk-rule');
+  for (let h = h0; h <= h1; h += step) {
+    const t = el('div','wk-tick' + (h === now.getHours() ? ' on' : ''), String(h % 24));
+    t.style.left = pct((h - h0) * 60);
+    rule.append(t);
+  }
+  top.append(rule);
+  grid.append(top);
+
   const dow = ['月','火','水','木','金','土','日'];
-  for (let d = 0; d < 7; d++) {
-    const cell = el('div', d === 5 ? 'sat' : d === 6 ? 'sun' : null);
-    if (d === todayCol) cell.classList.add('now');
-    cell.append(document.createTextNode(dow[d]),
-                el('b', null, String(new Date((base + d) * 86400000).getUTCDate())));
-    head.append(cell);
-  }
+  const days = weekBlocks(w, h0, h1);
 
-  // 時刻の目盛り
-  const gut = el('div','wk-hours');
-  gut.style.height = at(hours);
-  for (let h = h0; h <= h1; h++) {
-    const s = el('span', null, String(h % 24));
-    s.style.top = at(h - h0);
-    gut.append(s);
-  }
-  grid.append(gut);
-
-  const cols = weekBlocks(w);
   for (let d = 0; d < 7; d++) {
-    const col = el('div','wk-col' + (d === todayCol ? ' today' : ''));
-    col.style.height = at(hours);
-    for (const b of cols[d]) {
+    const row = el('div','wk-row' + (d === today ? ' today' : '') + (d === wkDay ? ' on' : ''));
+    row.dataset.d = String(d);
+
+    const cell = el('div','wk-d' + (d === 5 ? ' sat' : d === 6 ? ' sun' : ''));
+    cell.append(el('b', null, dow[d]),
+                el('span', null, new Date((base + d) * 86400000).getUTCMonth() + 1 + '/' +
+                                 new Date((base + d) * 86400000).getUTCDate()));
+    cell.addEventListener('click', () => { wkDay = d; renderWeek(); });
+    row.append(cell);
+
+    const stack = el('div','wk-stack');
+    const trk = el('div','wk-trk');
+    for (const b of days[d]) {
       const n = el('div','ev' + (b.dim ? ' dim' : ''));
       n.style.setProperty('--c', b.color);
-      n.style.top = at(b.top / 60);
-      n.style.height = `max(calc(var(--wh) * ${b.len / 60} - 1px), 9px)`;
-      const wpc = 100 / (b.ncols || 1);
-      n.style.left = `calc(${b.col * wpc}% + 1px)`;
-      n.style.width = `calc(${wpc}% - 2px)`;
-      // 短い枠は時刻を出さない（位置で分かる）。名前に文字数を回す
-      if (b.head && b.len >= 75) n.append(el('span','t', hhmm(h0 * 60 + b.top)));
-      // 「仕事（通勤含む）／浜松町…」なら「仕事」を太字で先に出す
-      const g = groupOf(b.ev.summary);
-      const rest = String(b.ev.summary).replace(/^[▨■◆●▶□・\s]+/, '').slice(g.length);
-      n.append(el('b', null, g));
-      if (rest.trim()) n.append(el('span','rest', rest));
-      n._ev = b.ev;                                  // 印を塗り直すときに使う
-      n._blk = b;                                    // 過ぎた分を塗るときに使う
-      n.addEventListener('click', () => showEvent(b, n));
-      col.append(n);
+      n.style.left = pct(b.top);
+      n.style.width = pct(b.len);
+      const lanes = b.ncols || 1;
+      n.style.top = `calc(${(b.col / lanes) * 100}% + 2px)`;
+      n.style.height = `calc(${100 / lanes}% - 4px)`;
+      if (!b.dim) n.append(el('span','nm', b.name));
+      n._ev = b.ev; n._blk = b;
+      if (!b.dim) n.addEventListener('click', () => { wkDay = d; toggleDone(b.ev); renderWeek(); });
+      trk.append(n);
     }
-    if (d === todayCol) {                            // 今この時刻、の線
-      const mins = now.getHours() * 60 + now.getMinutes() - h0 * 60;
-      if (mins >= 0 && mins <= hours * 60) {
-        const line = el('div','wk-now');
-        line.style.top = at(mins / 60);
-        col.append(line);
-      }
+    if (d === today && nowMin >= 0 && nowMin <= span) {
+      const m = el('div','wk-now');
+      m.style.left = pct(nowMin);
+      m.append(el('i'));
+      trk.append(m);
     }
-    grid.append(col);
+    stack.append(trk, el('div','wk-under'));
+    row.append(stack);
+    grid.append(row);
   }
 
-  paintGone();
-  paintMarks();
+  if (nowMin >= 0 && nowMin <= span) {
+    const line = el('div','wk-line');
+    line.dataset.p = String(nowMin / span);
+    grid.append(line);
+  }
 
   document.getElementById('wk-range').textContent =
     `${dayLabel(base)} 〜 ${dayLabel(base + 6)}`;
@@ -1838,6 +1935,75 @@ function renderWeek(){
 
   document.getElementById('stamp').textContent =
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
+
+  renderWkDay();
+  fitWeek();
+  paintGone();
+  paintMarks();
+}
+
+/* 7日ぶんが1画面に収まるよう、行の高さを実測から決める。
+   目盛り・すき間・下の行のぶんは中身で変わるので、引き算ではなく測って合わせる */
+function fitWeekRows(){
+  const wk = document.getElementById('week');
+  const grid = document.getElementById('wk-grid');
+  if (!grid || !grid.offsetParent) return;            // 畳んでいる間は測れない
+  const trk = grid.querySelector('.wk-trk');
+  if (!trk) return;
+  const tabs = document.getElementById('tabs');
+  const barH = tabs ? tabs.getBoundingClientRect().height : 58;
+  for (let i = 0; i < 3; i++) {
+    const g = grid.getBoundingClientRect();
+    const h = trk.getBoundingClientRect().height;
+    const room = innerHeight - barH - 6 - (g.top + window.scrollY);
+    const extra = g.height - 7 * h;                    // 目盛り・すき間・下の行
+    const next = Math.max(30, Math.min(80, (room - extra) / 7));
+    if (Math.abs(next - h) < 0.5) break;
+    wk.style.setProperty('--rowh', next.toFixed(1) + 'px');
+  }
+}
+
+/* 描いたあとに測る。字が帯からあふれたら、その日の下の行へ回す。
+   幅は分単位で決まるので、見積もりではなく実物を測るしかない */
+function fitWeek(){
+  const grid = document.getElementById('wk-grid');
+  if (!grid || !grid.querySelector('.wk-trk')) return;
+
+  for (const row of grid.querySelectorAll('.wk-row')) {
+    const under = row.querySelector('.wk-under');
+    under.textContent = '';
+    const out = [];
+    for (const n of row.querySelectorAll('.ev')) {
+      const nm = n.querySelector('.nm');
+      if (!nm) continue;
+      n.classList.remove('nolabel');
+      // 1行に2文字も入らない細さか、縦にあふれるなら下の行へ
+      if (nm.clientWidth < 19 || nm.offsetTop + nm.scrollHeight > n.clientHeight + 1) {
+        n.classList.add('nolabel');
+        out.push(n);
+      }
+    }
+    for (const n of out) {
+      const b = n._blk;
+      const chip = el('span','wk-chip');
+      chip.style.setProperty('--c', b.color);
+      chip.append(el('i'), document.createTextNode(
+        hhmm(wkWin[0] * 60 + b.top) + ' ' + b.name));
+      chip._ev = b.ev;
+      if (pin) chip.addEventListener('click', () => { wkDay = +row.dataset.d; toggleDone(b.ev); renderWeek(); });
+      under.append(chip);
+    }
+  }
+
+  fitWeekRows();
+  paintMarks();          // 札は作り直したところなので、印を入れ直す
+
+  // 破線は帯の中の位置に合わせる。左の曜日のぶんを差し引く
+  const trk = grid.querySelector('.wk-trk'), line = grid.querySelector('.wk-line');
+  if (trk && line) {
+    const r = trk.getBoundingClientRect(), g = grid.getBoundingClientRect();
+    line.style.left = (r.left - g.left + r.width * Number(line.dataset.p)) + 'px';
+  }
 }
 
 /* ---------- 自分が古くなっていないか見る ----------
@@ -2285,6 +2451,7 @@ function viewState(){
     .setAttribute('aria-pressed', String(k === view)));
   if (view !== 'board' && bdAt >= 0) bdHide();     // 他の面へ行くなら詳細は閉じる
   if (view === 'week' && !week) loadWeek();
+  if (view === 'week' && week) requestAnimationFrame(fitWeek);   // 畳んでいる間は測れない
   if (view === 'board' && !board) loadBoard();
 }
 
@@ -2629,17 +2796,21 @@ document.getElementById('quick').addEventListener('submit', e => {
 setInterval(() => {
   if (view !== 'week' || document.hidden || !week) return;
   paintGone();
-  const line = document.querySelector('.wk-now');
-  if (!line) { renderWeek(); return; }            // 日付が変わったら組み直す
+  const m = document.querySelector('.wk-now');
+  if (!m) { renderWeek(); return; }               // 日付が変わったら組み直す
   const now = new Date();
-  const h0 = Number(week.start_hour ?? 5);
-  line.style.top = `calc(var(--wh) * ${(now.getHours() * 60 + now.getMinutes() - h0 * 60) / 60})`;
+  const span = (wkWin[1] - wkWin[0]) * 60;
+  const at = now.getHours() * 60 + now.getMinutes() - wkWin[0] * 60;
+  if (at < 0 || at > span) { renderWeek(); return; }
+  m.style.left = (at / span * 100).toFixed(3) + '%';
+  const line = document.querySelector('.wk-line');
+  if (line) { line.dataset.p = String(at / span); fitWeek(); }
 }, 60000);
 
 VIEWS.forEach(k => document.getElementById('v-' + k)
   .addEventListener('click', () => setView(k)));
-document.getElementById('wk-detail').addEventListener('click', cycleStatus);
 document.getElementById('wk-print').addEventListener('click', () => window.print());
+addEventListener('resize', () => { if (view === 'week' && week) fitWeek(); });
 
 document.getElementById('bd-q').addEventListener('input', renderBoard);
 
