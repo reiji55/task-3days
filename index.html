@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-13-look">
+<meta name="app-version" content="2026-09-13-pick">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -434,21 +434,30 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .wk-row.today .wk-trk{background-color:var(--panel);box-shadow:inset 0 0 0 1.5px var(--ink-3)}
 /* 帯に入りきらなかった名前は、その日の下の行に時刻つきで並べる */
 .wk-under:empty{display:none}
-.wk-under{display:flex;flex-wrap:wrap;gap:2px 9px;padding-left:1px}
+.wk-under{display:flex;flex-wrap:wrap;gap:1px 2px}
 .wk-chip{
   display:inline-flex;align-items:center;gap:4px;font-size:10px;line-height:1.3;
   color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;
+  padding:1px 4px;border-radius:6px;
+  transition:background .5s ease, box-shadow .5s ease;
 }
+/* 叩いた帯の名前がここに回っているとき、どれを叩いたのかを薄く囲って返す */
+.wk-chip.lit{
+  background:color-mix(in srgb, var(--c) 13%, transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--c) 42%, transparent);
+  transition:none;animation:chip-lit .2s ease-out;
+}
+@keyframes chip-lit{from{transform:scale(.93);opacity:.35}to{transform:none;opacity:1}}
 .wk-chip i{width:6px;height:6px;border-radius:2px;background:var(--c);flex:none}
 .wk-chip em{font-style:normal;font-weight:700;font-size:9.5px;padding:0 5px;border-radius:999px}
 .wk-chip em.done{color:var(--ok);background:color-mix(in srgb, var(--ok) 14%, transparent)}
 .wk-chip em.miss{color:var(--warn);background:color-mix(in srgb, var(--warn) 14%, transparent)}
 
-/* 帯は見るだけ。印は下の一覧で付ける */
+/* 帯を叩くと、その日が下に出る。印は下の一覧で付ける */
 .ev{
   position:absolute;overflow:hidden;border-radius:6px;
   background:color-mix(in srgb, var(--c) var(--evfill), var(--panel));
-  border-left:3px solid var(--c);padding:3px 4px 0;
+  border-left:3px solid var(--c);padding:3px 4px 0;cursor:pointer;
 }
 .ev .nm{
   display:block;font-size:9.5px;line-height:1.18;color:var(--ink);
@@ -1731,6 +1740,19 @@ function pack(list){
 
 let wkDay = null;             // 週の頭から何日目を下に出しているか
 let wkWin = [5, 26];          // いま描いている時間の窓
+let wkPick = null, pickT = 0; // 直前に叩いた帯。名前が下に回っていたらそれを囲う
+
+// 帯を叩いたときの返事。その日を下に出し、名前が下の札にあるなら少しの間だけ囲う
+function pickEvent(d, ev){
+  wkDay = d; wkPick = ev;
+  renderWeek();
+  clearTimeout(pickT);
+  pickT = setTimeout(() => {
+    wkPick = null;
+    // 作り直すと画面が跳ねるので、印だけ外して CSS に消させる
+    document.querySelectorAll('.wk-chip.lit').forEach(n => n.classList.remove('lit'));
+  }, 2600);
+}
 
 const STAMP_OK = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
   '<path d="M7 16.8l6 6L25 10.5"/></svg>';
@@ -1911,6 +1933,7 @@ function renderWeek(){
       n.style.height = `calc(${100 / lanes}% - 4px)`;
       if (!b.dim) n.append(el('span','nm', b.name));
       n._ev = b.ev; n._blk = b;
+      if (!b.dim) n.addEventListener('click', () => pickEvent(d, b.ev));
       trk.append(n);
     }
     trk.append(el('div','wk-gone'));
@@ -1995,7 +2018,7 @@ function fitWeek(){
     }
     for (const n of out) {
       const b = n._blk;
-      const chip = el('span','wk-chip');
+      const chip = el('span','wk-chip' + (b.ev === wkPick ? ' lit' : ''));
       chip.style.setProperty('--c', b.color);
       chip.append(el('i'), document.createTextNode(
         hhmm(wkWin[0] * 60 + b.top) + ' ' + b.name));
