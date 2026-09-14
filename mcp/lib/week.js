@@ -86,6 +86,15 @@ function normalize(e) {
 const keyOf = e => `${e.start}|${e.end}|${e.summary}`;
 
 /**
+ * 始まった日の0時から数えて、その予定が何時に終わるか。
+ * 21:00 から翌5:00 までの夜勤なら 29。端数は切り上げる。
+ */
+function endsAtHour(e) {
+  const [h, m] = e.end.slice(11, 16).split(':').map(Number);
+  return (dayNo(e.end.slice(0, 10)) - dayNo(e.start.slice(0, 10))) * 24 + h + (m > 0 ? 1 : 0);
+}
+
+/**
  * week.json 全体を組み立てる。週の月曜に丸め、範囲外の予定は捨てる。
  * @returns {{ json:string, week:string, kept:number, dropped:number }}
  */
@@ -119,11 +128,17 @@ export function buildWeek(input, { updated, tz = 'Asia/Tokyo', now = new Date(),
     }
   }
 
+  // 夜勤のように日をまたぐ予定が、縦軸の終わりに収まらないことがある。
+  // そのままだと画面にも紙にも「いつ終わるのか」が出ないまま黙って切れるので、
+  // 収まらない予定があれば終わりを延ばす。伸ばすのは丸1日ぶんまで
+  const needed = events.reduce((h, e) => Math.max(h, endsAtHour(e)), endHour);
+  const end = Math.min(needed, startHour + 24);
+
   const body = {
     week,
     updated: updated || stampNow(tz, now),
     start_hour: startHour,
-    end_hour: endHour,
+    end_hour: end,
     dim,
     events
   };

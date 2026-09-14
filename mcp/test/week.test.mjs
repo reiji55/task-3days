@@ -78,6 +78,33 @@ test('buildWeek: 縦軸の範囲を変えられる', () => {
   assert.equal(w.end_hour, 24);
 });
 
+test('buildWeek: 日をまたぐ夜勤が切れないよう、縦軸の終わりを延ばす', () => {
+  const 夜勤 = ev('品川解体 夜間', '2026-09-08T21:00:00+09:00', '2026-09-09T05:00:00+09:00');
+  const w = JSON.parse(buildWeek({ week: '2026-09-07', events: [夜勤] }, { updated: STAMP }).json);
+  // 既定の 26（翌2時）のままだと、終わりの3時間が黙って消える
+  assert.equal(w.end_hour, 29, '翌5時まで入るところまで延びる');
+  assert.equal(w.start_hour, 5);
+
+  // 端数は切り上げる。ただし丸1日ぶん（start_hour + 24）で頭打ち。
+  // start_hour が5なので、5:30 終わりは30分ぶんだけ入りきらない
+  const 半端 = ev('夜勤', '2026-09-08T21:00:00+09:00', '2026-09-09T05:30:00+09:00');
+  assert.equal(JSON.parse(buildWeek({ week: '2026-09-07', events: [半端] },
+    { updated: STAMP }).json).end_hour, 29);
+  // 始まりを早めれば、そのぶん終わりも伸ばせる
+  assert.equal(JSON.parse(buildWeek({ week: '2026-09-07', events: [半端], start_hour: 4 },
+    { updated: STAMP }).json).end_hour, 28);
+
+  // 収まっているなら動かさない
+  const 日中 = ev('打ち合わせ', '2026-09-08T10:00:00+09:00', '2026-09-08T11:00:00+09:00');
+  assert.equal(JSON.parse(buildWeek({ week: '2026-09-07', events: [日中] },
+    { updated: STAMP }).json).end_hour, 26);
+
+  // 何日もまたぐ予定があっても、丸1日ぶんより先へは延ばさない
+  const 長期 = ev('出張', '2026-09-08T09:00:00+09:00', '2026-09-11T18:00:00+09:00');
+  assert.equal(JSON.parse(buildWeek({ week: '2026-09-07', events: [長期] },
+    { updated: STAMP }).json).end_hour, 29, 'start_hour + 24 で止まる');
+});
+
 test('buildWeek: 壊れた入力は弾く', () => {
   const base = { week: '2026-09-07', events: WEEK };
   assert.throws(() => buildWeek({ ...base, week: '2026/09/07' }), /日付の形式/);

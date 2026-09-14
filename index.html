@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-14-late">
+<meta name="app-version" content="2026-09-14-trk">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -31,6 +31,7 @@
   --p1:#3b6fd4; --p2:#c2571f; --p3:#2f8f6b; --p4:#8a4fbf;
   --p5:#b0345c; --p6:#5c7a1e; --p7:#1f7f9c; --p8:#8a6a1f;
   --evfill:15%; --veil:58%;
+  --trk-on:#ffffff;               /* 今日の行の地。ふつうの地（--line-soft）より明るく */
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -46,6 +47,7 @@
     --p5:#ff7f9f; --p6:#b8d858; --p7:#5ccbe8; --p8:#e8b85c;
     /* 暗いところで強く塗ると過ぎた日が読めなくなるので、薄めに掛ける */
     --evfill:26%; --veil:46%;
+    --trk-on:#34332c;             /* 暗いところでは黒く落とさず、逆に持ち上げる */
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -432,7 +434,9 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
     transparent 0 calc(100% / var(--wticks) - 1px),
     var(--line) calc(100% / var(--wticks) - 1px), var(--line) calc(100% / var(--wticks)));
 }
-.wk-row.today .wk-trk{background-color:var(--panel);box-shadow:inset 0 0 0 1.5px var(--ink-3)}
+/* 今日の行は地を1段「明るく」する。--panel をそのまま使うと、暗いところでは
+   地より暗くなって沈み、予定の無い時間が真っ黒に見えてしまう */
+.wk-row.today .wk-trk{background-color:var(--trk-on);box-shadow:inset 0 0 0 1.5px var(--ink-3)}
 /* 帯に入りきらなかった名前は、その日の下の行に時刻つきで並べる */
 .wk-under:empty{display:none}
 .wk-under{display:flex;flex-wrap:wrap;gap:1px 2px}
