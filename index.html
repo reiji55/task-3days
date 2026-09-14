@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-13-pick">
+<meta name="app-version" content="2026-09-14-late">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -406,6 +406,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   background:var(--panel);border:1px solid var(--line);
 }
 .wk-tick.on{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:700}
+.wk-tick.fine{display:none}            /* 1時間おきの目盛り。紙のときだけ出す */
 
 .wk-row{display:flex;align-items:stretch;margin-bottom:5px}
 .wk-d{
@@ -475,6 +476,31 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   background:repeating-linear-gradient(135deg,
     color-mix(in srgb, var(--c) 62%, transparent) 0 3px, transparent 3px 8px);
 }
+/* 手を付けないまま時間が過ぎた枠。過ぎた帯に沈ませず、暗がりで光らせて残す。
+   ⭕️にも❌にもしていない＝取りこぼしたかもしれないもの だけが光る */
+.ev.late{
+  --g:#ff5ca8;z-index:5;
+  background:color-mix(in srgb, var(--g) var(--evfill), var(--panel));
+  border-left-color:var(--g);
+  animation:late-pulse 3.2s ease-in-out infinite;
+}
+.ev.late .nm{color:color-mix(in srgb, var(--g) 32%, var(--ink));font-weight:600}
+@keyframes late-pulse{
+  0%,100%{box-shadow:0 0 0 1px color-mix(in srgb, var(--g) 75%, transparent),
+                     0 0 7px 0 color-mix(in srgb, var(--g) 58%, transparent),
+                     0 0 16px 3px color-mix(in srgb, var(--g) 30%, transparent)}
+  50%    {box-shadow:0 0 0 1px color-mix(in srgb, var(--g) 55%, transparent),
+                     0 0 4px 0 color-mix(in srgb, var(--g) 30%, transparent),
+                     0 0 9px 1px color-mix(in srgb, var(--g) 14%, transparent)}
+}
+/* 動きを減らす設定の人には、明滅させずに光らせたままにする */
+@media (prefers-reduced-motion: reduce){
+  .ev.late{animation:none;
+    box-shadow:0 0 0 1px color-mix(in srgb, var(--g) 75%, transparent),
+               0 0 7px 0 color-mix(in srgb, var(--g) 58%, transparent),
+               0 0 16px 3px color-mix(in srgb, var(--g) 30%, transparent)}
+}
+
 /* 過ぎたところを、その日の頭から現在時刻まで一本の帯で塗る。
    枠の中だけでなく空いている時間も塗るので、どこまで来たかが形で分かる。
    済んだ日は端まで、これからの日は0。今日だけが途中で切れる */
@@ -485,7 +511,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 }
 .wk-row.today .wk-gone{border-right:2px solid var(--warn)}
 
-.wk-now{position:absolute;top:-4px;bottom:-4px;width:0;z-index:5;
+.wk-now{position:absolute;top:-4px;bottom:-4px;width:0;z-index:6;
   border-left:2px solid var(--warn);pointer-events:none}
 .wk-now i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;
   background:var(--warn)}
@@ -680,42 +706,78 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 .bd-del:active{color:var(--warn);border-color:var(--warn)}
 
 /* ---- 印刷（A4横1枚） ----
-   縦が日付・横が時刻は、横長の紙にそのまま合う。幅があるので
-   ほとんどの予定が帯の中に名前を持てる。 */
+   紙は画面の写しではない。幅が 264mm あるので、画面では諦めたものを全部戻す。
+   ・目盛りは1時間おき。方眼もそれに合わせる（画面は2時間おき）
+   ・名前は帯の中に入れる。下の札に回した分も帯へ戻す
+   ・行の高さは紙の残り一杯まで使う（画面の実測値は捨てる）
+   ・今の時刻・過ぎた帯・光る枠は出さない。刷った瞬間から古くなるため */
 @media print{
   /* 紙は白い。暗いところ用の明るい色は紙では飛ぶので、明るいところ用に戻す */
   :root{
     --p1:#3b6fd4; --p2:#c2571f; --p3:#2f8f6b; --p4:#8a4fbf;
     --p5:#b0345c; --p6:#5c7a1e; --p7:#1f7f9c; --p8:#8a6a1f;
-    --evfill:15%;
+    --evfill:13%;
   }
   html,body{background:#fff;color:#000}
   header,#bar,#panel,#quick,.note,#tabs,.reload,.sub,#wk-print,
-  #bd-detail,#toast,.wk-day{display:none !important}
+  #bd-detail,#toast,.wk-day,.wk-under{display:none !important}
   #deck-clip{overflow:visible}
   #deck{transform:none !important;display:block;transition:none}
   #pane-days,#pane-board{display:none !important}
   #pane-week{display:block !important}
   .wrap{max-width:none;margin:0;padding:0}
-  #week{--wgut:17mm;--rowh:16mm}
-  .wk-bar{margin:0 0 2mm;font-size:8.5pt;color:#000}
-  .wk-range{font-size:11pt;color:#000}
-  .wk-top{height:5mm;margin-bottom:1.5mm}
-  .wk-rule{height:5mm}
-  .wk-tick{font-size:8pt;color:#000;background:#fff;border-color:#d5d8de;padding:.3mm 1.4mm}
-  .wk-tick.on{background:#000;border-color:#000;color:#fff}
-  .wk-row{margin-bottom:2mm}
-  .wk-d b{font-size:11pt;color:#000} .wk-d span{font-size:8pt;color:#333}
-  .wk-row.on .wk-d{background:none;padding:0;margin-right:0;width:var(--wgut);
-    align-items:flex-end}
-  .wk-row.on .wk-d b,.wk-row.on .wk-d span{color:#000}
-  .wk-trk{box-shadow:inset 0 0 0 .3mm #d5d8de;background:#fff;background-image:none}
-  .wk-row.today .wk-trk{box-shadow:inset 0 0 0 .6mm #555;background:#fff}
-  .ev{padding:1mm 1.5mm;border-left-width:1mm}
-  .ev .nm{font-size:9pt;line-height:1.3;color:#000}
-  .ev.dim{background:#f2f2f2;opacity:1}
-  .wk-under{gap:.5mm 4mm}
-  .wk-chip{font-size:8.5pt;color:#333}
+  /* 画面が実測で入れた値より強い。紙の高さから決め直す */
+  #week{--wgut:16mm !important; --rowh:23mm !important}
+
+  .wk-bar{margin:0 0 2.5mm;font-size:8.5pt;color:#444}
+  .wk-range{font-size:12pt;color:#000;font-weight:700}
+  .wk-fresh{color:#666}
+
+  /* 目盛りは方眼の線の上に置く。丸い囲みは画面のもの */
+  .wk-top{height:4.5mm;margin-bottom:1mm}
+  .wk-rule{height:4.5mm}
+  /* 画面は丸い囲みを中央に置く。紙では線の右肩に数字だけ添える */
+  .wk-tick,.wk-tick.fine{
+    display:block;transform:none;margin-left:.5mm;
+    font-size:7.5pt;color:#555;background:none;border:0;padding:0;font-weight:400;
+  }
+  .wk-tick.on{background:none;color:#555;font-weight:400}
+
+  /* 1時間おきの方眼。画面の間引いた線ではなく、目盛りと同じ刻みで引く */
+  .wk-row{margin-bottom:1.6mm;break-inside:avoid}
+  .wk-d{padding-right:2.5mm}
+  .wk-d b{font-size:11.5pt;color:#000;line-height:1.1}
+  .wk-d span{font-size:8pt;color:#555;line-height:1.2}
+  .wk-d.sat b{color:#1d4f7d} .wk-d.sun b{color:#8a2b2b}
+  .wk-row.on .wk-d{background:none;padding:0 2.5mm 0 0;margin-right:0;
+    width:var(--wgut);align-items:flex-end}
+  .wk-row.on .wk-d b,.wk-row.on .wk-d span{color:#000;font-weight:650}
+  .wk-row.on .wk-d.sat b{color:#1d4f7d} .wk-row.on .wk-d.sun b{color:#8a2b2b}
+  .wk-trk{
+    border-radius:1.2mm;background:#fff;
+    box-shadow:inset 0 0 0 .25mm #b9bcc2;
+    background-image:repeating-linear-gradient(to right,
+      transparent 0 calc(100% / var(--whours, 21) - .12mm),
+      #d3d6db calc(100% / var(--whours, 21) - .12mm), #d3d6db calc(100% / var(--whours, 21)));
+  }
+  .wk-row.today .wk-trk{box-shadow:inset 0 0 0 .4mm #8b8f96}
+
+  /* 紙では帯が広い。画面で下に逃がした名前も、ここでは中に戻す */
+  .ev{padding:.9mm 1.2mm 0;border-left-width:.9mm;border-radius:1mm}
+  .ev .nm,.ev.nolabel .nm{
+    display:block;font-size:8pt;line-height:1.22;color:#000;
+    word-break:break-all;
+  }
+  .ev.dim{background:#f1f1f1;opacity:1;background-image:none;border-left:0}
+  /* 済んだ枠の斜線は、紙では薄くする。字が読めなくなるため */
+  .ev.done::after{background:repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--c) 34%, transparent) 0 .35mm, transparent .35mm 1.1mm)}
+  /* 光りものは画面だけの合図 */
+  .ev.late{animation:none;box-shadow:none;z-index:auto;
+    background:color-mix(in srgb, var(--c) var(--evfill), #fff);
+    border-left-color:var(--c)}
+  .ev.late .nm{color:#000;font-weight:400}
+
   .wk-now,.wk-line,.wk-gone{display:none !important}
 }
 @page{size:A4 landscape;margin:8mm}
@@ -1807,6 +1869,7 @@ function cycleStatus(ev){
   if (!ev.status) delete ev.status;
   const label = ev.status ? MARK_LABEL[ev.status] : '印なし';
   paintMarks();
+  paintGone();                  // 印を付けた瞬間に、光っていたものを消す
   renderWkDay();
   saveWeek(`week: ${label}（${ev.summary}）`);
 }
@@ -1825,6 +1888,12 @@ function paintGone(){
     const past = mins - Number(row.dataset.d) * 1440 - wkWin[0] * 60;
     const w = Math.max(0, Math.min(span, past));
     bar.style.setProperty('--past', (w / span * 100).toFixed(3) + '%');
+    // 終わりの時刻を過ぎたのに印が無いもの＝取りこぼし。沈ませずに光らせる
+    row.querySelectorAll('.ev').forEach(n => {
+      const b = n._blk;
+      if (!b || b.dim) return;
+      n.classList.toggle('late', mins >= b.abs + b.len && !(n._ev && n._ev.status));
+    });
   });
 }
 
@@ -1888,19 +1957,23 @@ function renderWeek(){
   const nowMin = now.getHours() * 60 + now.getMinutes() - h0 * 60;
   if (wkDay == null) wkDay = today >= 0 && today < 7 ? today : 0;
 
-  // 目盛りは多くても9本まで。丸いピルで並べ、いまの時間だけ黒く塗る
+  // 画面の目盛りは多くても9本まで。丸いピルで並べ、いまの時間だけ黒く塗る。
+  // 紙では1時間おきに出すので、目盛り自体は毎時ぶん作って画面側で間引く
   const step = Math.max(1, Math.ceil((h1 - h0) / 9));
-  document.getElementById('week').style.setProperty('--wticks', String((h1 - h0) / step));
+  const wk = document.getElementById('week');
+  wk.style.setProperty('--wticks', String((h1 - h0) / step));
+  wk.style.setProperty('--whours', String(h1 - h0));
 
   const top = el('div','wk-top');
   top.append(el('div','wk-pad'));
   const rule = el('div','wk-rule');
   const live = nowMin >= 0 && nowMin <= span;       // 今がこの窓の中にあるか
-  for (let h = h0; h <= h1; h += step) {
+  for (let h = h0; h <= h1; h++) {
     const at = (h - h0) * 60;
+    const wide = (h - h0) % step === 0;             // 画面に出す方の目盛り
     // 目盛りは飛び飛びなので、今がぴたり乗ることは少ない。今を含む一つを塗る
-    const on = live && nowMin >= at && nowMin < at + step * 60;
-    const t = el('div','wk-tick' + (on ? ' on' : ''), String(h % 24));
+    const on = wide && live && nowMin >= at && nowMin < at + step * 60;
+    const t = el('div','wk-tick' + (wide ? '' : ' fine') + (on ? ' on' : ''), String(h % 24));
     t.style.left = pct(at);
     rule.append(t);
   }
