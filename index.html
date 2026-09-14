@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-14-grab">
+<meta name="app-version" content="2026-09-15-paper">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -687,7 +687,7 @@ textarea.rv::placeholder{color:rgba(0,0,0,.3)}
 .bd-grip i{display:block;width:38px;height:4px;border-radius:2px;background:var(--line)}
 .bd-fields{
   flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  padding:6px 20px calc(24px + env(safe-area-inset-bottom));
+  padding:6px 20px calc(24px + env(safe-area-inset-bottom) + var(--pad, 0px));
 }
 .bd-f{margin:0 0 20px}
 .bd-k{
@@ -716,11 +716,22 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
    ・行の高さは紙の残り一杯まで使う（画面の実測値は捨てる）
    ・今の時刻・過ぎた帯・光る枠は出さない。刷った瞬間から古くなるため */
 @media print{
-  /* 紙は白い。暗いところ用の明るい色は紙では飛ぶので、明るいところ用に戻す */
+  /* 紙は白い。端末が暗いところ用の設定でも、紙は明るいところ用の色で刷る。
+     色の名前を1つでも戻し忘れると、その色を読んでいる枠だけが真っ黒で出てくる
+     （枠の地は color-mix(… var(--panel)) なので、--panel が暗いと黒くなる）。
+     だから一部ではなく、色の名前をここで全部引き直す */
   :root{
+    color-scheme:light;
+    --bg:#f6f6f4; --panel:#ffffff; --line:#e3e2dd; --line-soft:#eeedea;
+    --ink:#1c1b19; --ink-2:#5f5d57; --ink-3:#8d8a82;
+    --accel:#1f6f4a; --accel-bg:#e4f0e9;
+    --routine:#8a5a12; --routine-bg:#f6ecd9;
+    --done:#9a9790; --today:#1c1b19;
+    --warn:#a8341f; --due:#c4761a; --ok:#1f8a4c;
+    --shadow:none;
     --p1:#3b6fd4; --p2:#c2571f; --p3:#2f8f6b; --p4:#8a4fbf;
     --p5:#b0345c; --p6:#5c7a1e; --p7:#1f7f9c; --p8:#8a6a1f;
-    --evfill:13%;
+    --evfill:13%; --veil:58%; --trk-on:#ffffff;
   }
   html,body{background:#fff;color:#000}
   header,#bar,#panel,#quick,.note,#tabs,.reload,.sub,#wk-print,
@@ -730,8 +741,13 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   #pane-days,#pane-board{display:none !important}
   #pane-week{display:block !important}
   .wrap{max-width:none;margin:0;padding:0}
-  /* 画面が実測で入れた値より強い。紙の高さから決め直す */
-  #week{--wgut:16mm !important; --rowh:23mm !important}
+  /* 画面が実測で入れた値より強い。紙の高さから決め直す。
+     A4横の刷れる高さは 194mm だが、Safari は上下に URL と日付・ページ番号を
+     自前で足すので、その分だけ実際は狭い。目一杯まで使うと7行目の日曜が
+     2枚目にこぼれるため、20mm に抑えて余白を持たせる
+     （7行 × 21.4mm ＋ 見出しと目盛り 12.5mm ＝ 162mm） */
+  #week{--wgut:16mm !important; --rowh:20mm !important}
+  #wk-grid{break-inside:avoid}            /* 途中で切らず、7行を一枚に収める */
 
   .wk-bar{margin:0 0 2.5mm;font-size:8.5pt;color:#444}
   .wk-range{font-size:12pt;color:#000;font-weight:700}
@@ -748,7 +764,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   .wk-tick.on{background:none;color:#555;font-weight:400}
 
   /* 1時間おきの方眼。画面の間引いた線ではなく、目盛りと同じ刻みで引く */
-  .wk-row{margin-bottom:1.6mm;break-inside:avoid}
+  .wk-row{margin-bottom:1.4mm;break-inside:avoid}
   .wk-d{padding-right:2.5mm}
   .wk-d b{font-size:11.5pt;color:#000;line-height:1.1}
   .wk-d span{font-size:8pt;color:#555;line-height:1.2}
@@ -2354,7 +2370,12 @@ const restY = () => PEEK / 100 * boxH();
 function sheetSet(up){
   bdUp = !!up;
   sheet().classList.remove('drag');
-  sheet().style.setProperty('--sheet', (bdUp ? FULL : PEEK) + '%');
+  const pct = bdUp ? FULL : PEEK;
+  sheet().style.setProperty('--sheet', pct + '%');
+  // 面は画面と同じ高さのまま下へずらしてあるので、中身の箱もその分だけ
+  // 画面の下にはみ出している。はみ出した分を下の余白で埋めないと、
+  // 最後まで送っても終わりの数行が画面の外に残って読めない
+  sheet().style.setProperty('--pad', (bdUp ? pct / 100 * boxH() : 0) + 'px');
 }
 
 // 中身を入れた直後に、textarea の高さを中身に合わせる
@@ -2763,18 +2784,21 @@ function setView(next){
     if (!open() || e.touches.length !== 1) return;
     const n = e.touches[0].target;
     if (!n || !n.closest) return;
+    // 前の指が途中で消えて、面が中途半端なところで止まっていることがある。
+    // そのまま始めると、見えている位置と bdUp が食い違って指の意味が逆になる
+    if (sheet().classList.contains('drag')) {
+      sheetSet(sheet().getBoundingClientRect().top <= (top() + restY()) / 2);
+    }
     viaBody = false;
     if (n.closest('.bd-grip')) from = 'grip';
     else if (n.closest('#bd-sheet')) {
       // 白い面の中身。下りている間は、ここをつまんでも面ごと引き上げる。
       // 帯だけしか掴めないと、Detail を掴んで引いても何も起きない
       from = 'grip'; viaBody = true;
-    } else {
-      // 色の面はどこでも掴める。.bd-top は中身の分しか高さが無いので、
-      // その下の色だけの帯が「触っても動かないところ」になっていた
+    } else if (n.closest('.bd-top')) {
       from = 'top';
       if (n.closest('textarea, input')) return;
-    }
+    } else return;                                // 色だけの帯は触っても動かさない
     lock = null;
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     base = pct();
@@ -2792,7 +2816,10 @@ function setView(next){
       // それ以外は「続きを読む」ための指なので、スクロールに返す
       if (lock === 'y' && viaBody) {
         const f = document.getElementById('bd-fields');
-        const ok = bdUp ? (dy > 0 && f && f.scrollTop <= 0) : dy < 0;
+        // bdUp ではなく、いま目に見えている位置で決める。状態がずれていても
+        // 「上がっている面を上へ引く指」を横取りしてスクロールを殺さない
+        const up = sheet().getBoundingClientRect().top <= top() + 8;
+        const ok = up ? (dy > 0 && f && f.scrollTop <= 0) : dy < 0;
         if (!ok) { lock = 'no'; return; }
       }
       if (lock === 'no') return;
@@ -2816,6 +2843,13 @@ function setView(next){
     if (!bdUp && dy > GO * 1.6) { sheetSet(false); return bdHide(); }
     if (Math.abs(dy) < 26) return sheetSet(bdUp); // 迷いは元の位置へ
     sheetSet(dy < 0);
+  }, { passive: true });
+
+  // 指が途中で取り上げられたら（着信・システムの操作など）、
+  // 中途半端な位置に置き去りにせず、近い方へ落ち着かせる
+  addEventListener('touchcancel', () => {
+    if (lock === 'y') sheetSet(sheet().getBoundingClientRect().top <= (top() + restY()) / 2);
+    lock = 'no';
   }, { passive: true });
 
   // 帯をつまむ代わりに叩いても上げ下げできる
