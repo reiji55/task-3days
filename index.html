@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-14-trk">
+<meta name="app-version" content="2026-09-14-grab">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -2744,7 +2744,7 @@ function setView(next){
    上へで面を上げ、下へで一覧に戻り、横へで隣のカードに移る。 */
 (() => {
   const WAKE = 8, SLOPE = 1.2, GO = 46;
-  let x0 = 0, y0 = 0, base = 0, lock = 'no', from = '';
+  let x0 = 0, y0 = 0, base = 0, lock = 'no', from = '', viaBody = false;
 
   const open = () => !detail().hidden && bdAt >= 0;
   const top = () => FULL / 100 * boxH();
@@ -2763,10 +2763,18 @@ function setView(next){
     if (!open() || e.touches.length !== 1) return;
     const n = e.touches[0].target;
     if (!n || !n.closest) return;
+    viaBody = false;
     if (n.closest('.bd-grip')) from = 'grip';
-    else if (n.closest('.bd-top')) from = 'top';
-    else return;                                  // 中身の上は本人のスクロールに任せる
-    if (from === 'top' && n.closest('textarea, input')) return;
+    else if (n.closest('#bd-sheet')) {
+      // 白い面の中身。下りている間は、ここをつまんでも面ごと引き上げる。
+      // 帯だけしか掴めないと、Detail を掴んで引いても何も起きない
+      from = 'grip'; viaBody = true;
+    } else {
+      // 色の面はどこでも掴める。.bd-top は中身の分しか高さが無いので、
+      // その下の色だけの帯が「触っても動かないところ」になっていた
+      from = 'top';
+      if (n.closest('textarea, input')) return;
+    }
     lock = null;
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     base = pct();
@@ -2779,6 +2787,14 @@ function setView(next){
       if (Math.abs(dx) < WAKE && Math.abs(dy) < WAKE) return;
       lock = Math.abs(dy) > Math.abs(dx) * SLOPE ? 'y'
            : (from === 'top' ? 'x' : 'no');
+      // 中身の上から始めた指は、面を動かす向きのときだけ受け取る。
+      // 下りているなら上へ、上まで来ていて先頭にいるなら下へ。
+      // それ以外は「続きを読む」ための指なので、スクロールに返す
+      if (lock === 'y' && viaBody) {
+        const f = document.getElementById('bd-fields');
+        const ok = bdUp ? (dy > 0 && f && f.scrollTop <= 0) : dy < 0;
+        if (!ok) { lock = 'no'; return; }
+      }
       if (lock === 'no') return;
     }
     if (e.cancelable) e.preventDefault();
