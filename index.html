@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-carry">
+<meta name="app-version" content="2026-09-15-tap">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -26,6 +26,7 @@
   --routine:#8a5a12; --routine-bg:#f6ecd9;
   --done:#9a9790; --today:#1c1b19;
   --warn:#a8341f; --due:#c4761a; --ok:#1f8a4c;
+  --on-fill:#ffffff;              /* 塗りつぶした面（払って出る削除・MUST）に乗せる字 */
   --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -16px rgba(0,0,0,.18);
   /* 案件ごとの色。暗い地の上では沈むので、下で明るい方に差し替える */
   --p1:#3b6fd4; --p2:#c2571f; --p3:#2f8f6b; --p4:#8a4fbf;
@@ -41,6 +42,8 @@
     --routine:#e3b169; --routine-bg:#332715;
     --done:#6a6760; --today:#eceae4;
     --warn:#f0917c; --due:#e2a049; --ok:#2fa862;
+    /* 暗いところの --warn / --accel は明るい方に振ってあるので、字は逆に暗くする */
+    --on-fill:#17150f;
     --shadow:none;
     /* 暗い地の上で映える明るい方。色の見分けは明るさではなく色味で付ける */
     --p1:#7fa9ff; --p2:#ff9d5c; --p3:#4fd3a0; --p4:#c48cf5;
@@ -174,7 +177,7 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .task-wrap.bare .task-act{opacity:1;transition:none;pointer-events:auto}
 .task-del{
   appearance:none;border:0;background:transparent;cursor:pointer;
-  width:88px;color:#fff;font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
+  width:88px;color:var(--on-fill);font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
 }
 .task-del:active{opacity:.7}
 /* 右へ払うと左端から出る面。中身は場所によって変わる（MUST へ／今日へ） */
@@ -188,7 +191,7 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .task-wrap.bare-r .task-act2{opacity:1;transition:none;pointer-events:auto}
 .task-add{
   appearance:none;border:0;background:transparent;cursor:pointer;
-  width:104px;color:#fff;font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
+  width:104px;color:var(--on-fill);font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
 }
 .task-add:active{opacity:.7}
 .task{
@@ -761,6 +764,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
     --routine:#8a5a12; --routine-bg:#f6ecd9;
     --done:#9a9790; --today:#1c1b19;
     --warn:#a8341f; --due:#c4761a; --ok:#1f8a4c;
+    --on-fill:#ffffff;
     --shadow:none;
     --p1:#3b6fd4; --p2:#c2571f; --p3:#2f8f6b; --p4:#8a4fbf;
     --p5:#b0345c; --p6:#5c7a1e; --p7:#1f7f9c; --p8:#8a6a1f;
@@ -1625,7 +1629,6 @@ function renderCard(t, lead, fold){
     box = el('div','box');
   }
   card.dataset.id = t.id;                           // 描き直したあと同じ札を見つける目印
-  if (t.must) card.dataset.must = '1';              // 右へ払ったとき、どちらへ倒すか
   card.append(box, el('div','title', t.title));
 
   if (pin) {
@@ -2887,9 +2890,10 @@ function setView(next){
   }, { passive: true });
 })();
 
-/* ---------- 札を横に払って消す ----------
-   左へ払うと赤い面が出る。そこを叩くと消える。
-   出してから叩く2手なので、確認は挟まない（✕ の方は今までどおり確認する）。 */
+/* ---------- 札を横に払う ----------
+   左へ払うと赤い面、右へ払うと緑の面が出て、開いたまま止まる。
+   そこを叩いて初めて動く。左右とも「出してから叩く」2手なので、
+   確認は挟まない（✕ の方は今までどおり確認する）。 */
 (() => {
   const WAKE = 8, SLOPE = 1.2, WIDE = 88, WIDE_R = 104, GO = 40;
   let wrap = null, card = null, x0 = 0, y0 = 0, base = 0, lock = 'no', right = '';
@@ -2940,20 +2944,14 @@ function setView(next){
     lock = 'no';
     const dx = e.changedTouches[0].clientX - x0;
     const x = base + dx;
-    const w = wrap, c = card;
+    const w = wrap;
     card.style.transform = '';
     w.classList.remove('swipe', 'dir-l', 'dir-r');
     wrap = null; card = null;
 
-    // MUST は払いきったその場で入れ替える。押す手間を挟まない
-    if (right === 'must' && x > GO) {
-      w.classList.remove('bare', 'bare-r');
-      const title = (w.querySelector('.title') || {}).textContent || '';
-      toggleMust(c.dataset.id, c.dataset.must !== '1', title);
-      return;
-    }
+    // 左も右も、開いたまま止めてから叩く。払った勢いでは何も起こさない
     w.classList.toggle('bare', x < -GO);
-    w.classList.toggle('bare-r', right === 'today' && x > GO);
+    w.classList.toggle('bare-r', !!right && x > GO);
   }, { passive: true });
 })();
 
