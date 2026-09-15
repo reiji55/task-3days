@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-paper">
+<meta name="app-version" content="2026-09-15-tidy">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -304,7 +304,6 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 }
 #panel button.primary{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:600}
 #panel button:active{opacity:.6}
-#panel .warn{color:var(--warn)}
 #panel a{color:inherit}
 
 #quick{display:flex;gap:7px;margin:0 0 18px}
@@ -948,7 +947,6 @@ let text = '';         // tasks.txt のいまの中身。画面はここから�
 let saved = '';        // サーバーにある（はずの）中身。しくじったらここへ戻す
 let sha = null;        // GitHub 側の blob SHA。更新のたびに付け替える
 let editing = false;   // メモを編集中か（編集中は自動リロードを止める）
-let othersOpen = false; // 「その他の日」を開いているか。描き直しても畳まないよう覚える
 let view = 'days';     // 'board' = ガイド / 'days' = 3日分 / 'week' = 週間タイムテーブル
 let week = null;       // week.json の中身。まだ読んでいなければ null
 
@@ -1169,15 +1167,49 @@ async function apiRead(){
   return json.text;
 }
 
-async function apiWrite(body, message, keepalive){
-  const res = await fetch(API, {
+/**
+ * 3つのファイル（tasks.txt / week.json / board.json）はどれも同じ書き方をする。
+ * PUT して、409 なら向こうが新しい、それ以外の失敗は fail() が文にする。
+ * @returns 新しい blob SHA
+ */
+async function putDoc(file, body, sha0, message, keepalive){
+  const res = await fetch(file ? `${API}?file=${file}` : API, {
     method:'PUT', keepalive: !!keepalive,
     headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
-    body: JSON.stringify({ text: body, sha, message })
+    body: JSON.stringify({ text: body, sha: sha0, message })
   });
   if (res.status === 409) throw new Error('conflict');
   if (!res.ok) throw await fail(res);
-  sha = (await res.json()).sha;
+  return (await res.json()).sha;
+}
+
+/**
+ * 同じく、読み方も3つで共通。編集できるなら API 経由（書き戻すのに SHA が要る）。
+ * 駄目でも公開ファイルなら読める。ただし SHA が無いので、そちらは書けない。
+ * @param ok 中身が本当にそのファイルかを見る。別のものを掴んだ SHA で書くと潰す
+ * @returns { got, sha, err }
+ */
+async function getDoc(file, src, ok){
+  let first = '';
+  if (pin) {
+    try {
+      const res = await fetch(`${API}?file=${file}&t=${Date.now()}`, {
+        headers: { 'X-Pin': pin }, cache:'no-store'
+      });
+      if (!res.ok) throw await fail(res);
+      const json = await res.json();
+      const got = JSON.parse(json.text);
+      if (!ok(got)) throw new Error(`${src} ではありません`);
+      return { got, sha: json.sha, err: '' };
+    } catch (e) { first = e.message; }
+  }
+  try {
+    const res = await fetch(`${src}?t=${Date.now()}`, { cache:'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return { got: await res.json(), sha: null, err: '' };
+  } catch (e) {
+    return { got: null, sha: null, err: first || e.message };
+  }
 }
 
 /* ---------- 保留してまとめて出す ----------
@@ -1232,7 +1264,7 @@ async function flush(keepalive){
   try {
     if (body === saved) { say(''); return; }  // 行って帰ってきただけ。コミットを作らない
     try {
-      await apiWrite(body, message, keepalive);
+      sha = await putDoc('', body, sha, message, keepalive);
     } catch (e) {
       if (e.message !== 'conflict') throw e;
       // 他所で先に更新されていた。最新を取り直して、同じ書き換えを当て直す
@@ -1241,7 +1273,7 @@ async function flush(keepalive){
       body = again.reduce((t, op) => op.fn(t), fresh);
       text = body;
       draw();
-      await apiWrite(body, message, keepalive);   // やり直しは1回だけ
+      sha = await putDoc('', body, sha, message, keepalive);   // やり直しは1回だけ
     }
     saved = body;
     say('');
@@ -1277,6 +1309,12 @@ function say(msg, bad){
   const n = document.getElementById('say');
   n.textContent = msg || '';
   n.classList.toggle('bad', !!bad);
+}
+
+// 見出しの横の「14:20 時点」。3日の面でも週の面でも同じものを出す
+function stampClock(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  document.getElementById('stamp').textContent = `${p(d.getHours())}:${p(d.getMinutes())} 時点`;
 }
 
 // しくじったときだけ、下に数秒出して消える知らせ
@@ -1684,8 +1722,7 @@ function render(days){
     ? renderStale(days, stale, ahead, todayKey)
     : renderOne(dayAt, days.get(dayAt) || [], anytime, todayKey));
 
-  document.getElementById('stamp').textContent =
-    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
+  stampClock();
 
   if (keepY) window.scrollTo(0, keepY);
 }
@@ -1705,14 +1742,6 @@ let weekErr = '';
 let weekSha = null;           // week.json の blob SHA。書き込みに要る
 let weekBusy = null;          // 保存中の Promise。連打しても直列に流す
 
-// ⭕️と❌。添付の絵に合わせた太い輪と、筆で引いたような×
-const MARK = {
-  done: '<svg viewBox="0 0 100 100" aria-hidden="true">' +
-        '<circle cx="50" cy="50" r="36" fill="none" stroke="#c8394a" stroke-width="17"/></svg>',
-  miss: '<svg viewBox="0 0 100 100" aria-hidden="true">' +
-        '<g stroke="#e5231b" stroke-width="16" stroke-linecap="round">' +
-        '<line x1="20" y1="20" x2="80" y2="80"/><line x1="80" y1="20" x2="20" y2="80"/></g></svg>'
-};
 const MARK_LABEL = { done: 'やった', miss: 'やらなかった' };
 const NEXT_STATUS = { '': 'done', done: 'miss', miss: '' };
 
@@ -1841,8 +1870,9 @@ const STAMP_OK = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
 const STAMP_NG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
   '<path d="M9.5 9.5l13 13M22.5 9.5l-13 13"/></svg>';
 
-// 選んだ日の予定を縦に並べる。印はここで付ける
-function renderWkDay(){
+// 選んだ日の予定を縦に並べる。印はここで付ける。
+// days は表を組んだときのものを使い回す（無ければ自分で切り分ける）
+function renderWkDay(days){
   const box = document.getElementById('wk-day');
   box.textContent = '';
   if (!week) return;
@@ -1856,7 +1886,7 @@ function renderWkDay(){
     : '　印を付けるには編集を有効にしてください'));
   box.append(cap);
 
-  const list = weekBlocks(week, wkWin[0], wkWin[1])[wkDay]
+  const list = (days || weekBlocks(week, wkWin[0], wkWin[1]))[wkDay]
     .filter(b => !b.dim).sort((a, b) => a.top - b.top);
   if (!list.length) { box.append(el('div','wk-empty','この日は空です')); return; }
 
@@ -1935,15 +1965,7 @@ async function saveWeek(message){
   const run = async () => {
     say('保存中…');
     try {
-      const res = await fetch(`${API}?file=week`, {
-
-        method:'PUT',
-        headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
-        body: JSON.stringify({ text: JSON.stringify(week, null, 2) + '\n', sha: weekSha, message })
-      });
-      if (res.status === 409) throw new Error('conflict');
-      if (!res.ok) throw await fail(res);
-      weekSha = (await res.json()).sha;
+      weekSha = await putDoc('week', JSON.stringify(week, null, 2) + '\n', weekSha, message);
       say('保存しました');
     } catch (e) {
       say(e.message === 'conflict' ? '他で更新されていたので読み直しました' : e.message, true);
@@ -2059,13 +2081,11 @@ function renderWeek(){
   document.getElementById('wk-fresh').textContent =
     up ? `${dayLabel(up.day)} ${hhmm(up.min)} 時点` : '';
 
-  document.getElementById('stamp').textContent =
-    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ' 時点';
+  stampClock();
 
-  renderWkDay();
-  fitWeek();
+  renderWkDay(days);        // 切り分けたものを使い回す。7日ぶんを組み直さない
+  fitWeek();                // 中で paintMarks まで済ませる
   paintGone();
-  paintMarks();
 }
 
 /* 7日ぶんが1画面に収まるよう、行の高さを実測から決める。
@@ -2095,40 +2115,55 @@ function fitWeek(){
   const grid = document.getElementById('wk-grid');
   if (!grid || !grid.querySelector('.wk-trk')) return;
 
-  for (const row of grid.querySelectorAll('.wk-row')) {
-    const under = row.querySelector('.wk-under');
-    under.textContent = '';
-    const out = [];
-    for (const n of row.querySelectorAll('.ev')) {
+  // 「戻す→測る→直す」を3つに分ける。測りながら直すと、1枠ごとに
+  // 組み直しが挟まって枠の数だけ遅くなる（7行×5枠で35回になっていた）
+  const rows = [...grid.querySelectorAll('.wk-row')].map(row => ({
+    under: row.querySelector('.wk-under'),
+    evs: [...row.querySelectorAll('.ev')]
+  }));
+
+  for (const r of rows) {                       // 1. 素に戻す（書くだけ）
+    r.under.textContent = '';
+    for (const n of r.evs) n.classList.remove('nolabel');
+  }
+
+  const out = [];                               // 2. まとめて測る（読むだけ）
+  for (const r of rows) {
+    for (const n of r.evs) {
       const nm = n.querySelector('.nm');
       if (!nm) continue;
-      n.classList.remove('nolabel');
       // 1行に2文字も入らない細さか、縦にあふれるなら下の行へ
       if (nm.clientWidth < 19 || nm.offsetTop + nm.scrollHeight > n.clientHeight + 1) {
-        n.classList.add('nolabel');
-        out.push(n);
+        out.push([r.under, n]);
       }
     }
-    for (const n of out) {
-      const b = n._blk;
-      const chip = el('span','wk-chip' + (b.ev === wkPick ? ' lit' : ''));
-      chip.style.setProperty('--c', b.color);
-      chip.append(el('i'), document.createTextNode(
-        hhmm(wkWin[0] * 60 + b.top) + ' ' + b.name));
-      chip._ev = b.ev;
-      under.append(chip);
-    }
+  }
+
+  for (const [under, n] of out) {               // 3. まとめて直す（書くだけ）
+    n.classList.add('nolabel');
+    const b = n._blk;
+    const chip = el('span','wk-chip' + (b.ev === wkPick ? ' lit' : ''));
+    chip.style.setProperty('--c', b.color);
+    chip.append(el('i'), document.createTextNode(
+      hhmm(wkWin[0] * 60 + b.top) + ' ' + b.name));
+    chip._ev = b.ev;
+    under.append(chip);
   }
 
   fitWeekRows();
   paintMarks();          // 札は作り直したところなので、印を入れ直す
+  placeLine();
+}
 
-  // 破線は帯の中の位置に合わせる。左の曜日のぶんを差し引く
-  const trk = grid.querySelector('.wk-trk'), line = grid.querySelector('.wk-line');
-  if (trk && line) {
-    const r = trk.getBoundingClientRect(), g = grid.getBoundingClientRect();
-    line.style.left = (r.left - g.left + r.width * Number(line.dataset.p)) + 'px';
-  }
+// 破線を帯の中の位置に合わせる。左の曜日のぶんを差し引く。
+// 1分ごとの進みはこれだけで足りる（札まで作り直す必要はない）
+function placeLine(){
+  const grid = document.getElementById('wk-grid');
+  const trk = grid && grid.querySelector('.wk-trk');
+  const line = grid && grid.querySelector('.wk-line');
+  if (!trk || !line) return;
+  const r = trk.getBoundingClientRect(), g = grid.getBoundingClientRect();
+  line.style.left = (r.left - g.left + r.width * Number(line.dataset.p)) + 'px';
 }
 
 /* ---------- 自分が古くなっていないか見る ----------
@@ -2160,38 +2195,10 @@ async function checkVersion(){
 }
 
 async function loadWeek(){
-  weekErr = '';
-  weekSha = null;
-
-  // 編集できる状態なら API 経由。印を書き戻すのに SHA が要る
-  if (pin) {
-    try {
-      const res = await fetch(`${API}?file=week&t=${Date.now()}`, {
-        headers: { 'X-Pin': pin }, cache:'no-store'
-      });
-      if (!res.ok) throw await fail(res);
-      const json = await res.json();
-      // 読めたものが本当に週かを確かめてから SHA を持つ。別のファイルが返って
-      // きていた場合にその SHA で書き戻すと、そちらを潰してしまう
-      const got = JSON.parse(json.text);
-      if (!Array.isArray(got.events)) throw new Error('week.json ではありません');
-      week = got;
-      weekSha = json.sha;
-      return renderWeek();
-    } catch (e) {
-      weekErr = e.message;        // API が駄目でも、下の公開ファイルなら見られる
-    }
-  }
-
-  try {
-    const res = await fetch(`${WEEK_SRC}?t=${Date.now()}`, { cache:'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    week = await res.json();
-    weekErr = '';                 // 見るだけならこれで足りる（印は付けられない）
-  } catch (e) {
-    week = null;
-    weekErr = weekErr || e.message;
-  }
+  const r = await getDoc('week', WEEK_SRC, g => Array.isArray(g.events));
+  week = r.got;
+  weekSha = r.sha;                // 公開ファイルから読んだときは null＝印を付けられない
+  weekErr = r.err;
   renderWeek();
 }
 
@@ -2242,11 +2249,6 @@ function stampLocal(){
   return `${ymd(d)}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
          `${off < 0 ? '-' : '+'}${p(Math.floor(a / 60))}:${p(a % 60)}`;
 }
-const shortDate = s => {
-  const m = String(s || '').match(/^\d{4}-(\d{2})-(\d{2})/);
-  return m ? `${Number(m[1])}/${Number(m[2])}` : '';
-};
-
 // 端末の中の写し。圏外でも、閉じても、打ったものはここに残る
 function keepBoard(){
   if (!board) return;
@@ -2277,14 +2279,7 @@ async function flushBoard(){
     const text = JSON.stringify({ updated: stampLocal(), cards: board.cards }, null, 2) + '\n';
     try {
       bdSay('保存中…');
-      const res = await fetch(`${API}?file=board`, {
-        method:'PUT',
-        headers: { 'X-Pin': pin, 'Content-Type':'application/json' },
-        body: JSON.stringify({ text, sha: boardSha, message: bdMsg || 'board: 更新' })
-      });
-      if (res.status === 409) throw new Error('conflict');
-      if (!res.ok) throw await fail(res);
-      boardSha = (await res.json()).sha;
+      boardSha = await putDoc('board', text, boardSha, bdMsg || 'board: 更新');
       bdSaved = v;                       // 途中でまた直していたら、次のぶんが残る
       bdMsg = '';
       keepBoard();
@@ -2519,39 +2514,10 @@ function restoreDraft(){
 }
 
 async function loadBoard(){
-  boardErr = '';
-  boardSha = null;
-  let got = null;
-
-  // 編集できる状態なら API 経由。書き戻すのに SHA が要る
-  if (pin) {
-    try {
-      const res = await fetch(`${API}?file=board&t=${Date.now()}`, {
-        headers: { 'X-Pin': pin }, cache:'no-store'
-      });
-      if (!res.ok) throw await fail(res);
-      const json = await res.json();
-      // 中身がボードだと確かめてから SHA を持つ。まだ ?file=board を知らない
-      // サーバーは tasks.txt を返してくるので、その SHA で書くと潰してしまう
-      const cur = JSON.parse(json.text);
-      if (!Array.isArray(cur.cards)) throw new Error('board.json ではありません');
-      got = cur;
-      boardSha = json.sha;
-    } catch (e) {
-      boardErr = e.message;        // API が駄目でも、下の公開ファイルなら読める
-    }
-  }
-
-  if (!got) {
-    try {
-      const res = await fetch(`${BOARD_SRC}?t=${Date.now()}`, { cache:'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      got = await res.json();
-      boardErr = '';               // 見るだけならこれで足りる（書けはしない）
-    } catch (e) {
-      boardErr = boardErr || e.message;
-    }
-  }
+  const r = await getDoc('board', BOARD_SRC, g => Array.isArray(g.cards));
+  boardSha = r.sha;                // 公開ファイルから読んだときは null＝書き戻せない
+  boardErr = r.err;
+  const got = r.got;
 
   board = got ? { updated: got.updated || null,
                   cards: Array.isArray(got.cards) ? got.cards : [] } : null;
@@ -2963,7 +2929,7 @@ setInterval(() => {
   if (at < 0 || at > span) { renderWeek(); return; }
   m.style.left = (at / span * 100).toFixed(3) + '%';
   const line = document.querySelector('.wk-line');
-  if (line) { line.dataset.p = String(at / span); fitWeek(); }
+  if (line) { line.dataset.p = String(at / span); placeLine(); }
 }, 60000);
 
 VIEWS.forEach(k => document.getElementById('v-' + k)
