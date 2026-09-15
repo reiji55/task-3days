@@ -366,7 +366,7 @@ test('get_week: 7日分の枠と予定が返り、コミットしない', async 
   assert.equal(f.commits.length, 0, '読むだけではコミットしない');
 });
 
-test('set_week: 丸ごと入れ替わり、1コミットで済む', async () => {
+test('set_week: 丸ごと入れ替わり、消える取りこぼしを拾ってから書く', async () => {
   const f = fixture();
   await withClient(f.io, async client => {
     const r = payload(await call(client, 'set_week', {
@@ -382,6 +382,8 @@ test('set_week: 丸ごと入れ替わり、1コミットで済む', async () => 
     assert.equal(r.week, '2026-09-07', '月曜に丸まる');
     assert.equal(r.events, 2);
     assert.equal(r.dropped, 1, '週の外は捨てる');
+    // 前の写しの 9/7「仕事」は、印が付かないまま終わって消えるので拾い上げる
+    assert.deepEqual(r.carried, [{ date: '2026-09-07', title: '仕事', was: 'late' }]);
 
     const w = payload(await call(client, 'get_week'));
     assert.deepEqual(w.days[1].events, [{ summary: '仕事', time: '07:00-19:00' }]);
@@ -389,8 +391,59 @@ test('set_week: 丸ごと入れ替わり、1コミットで済む', async () => 
       [{ summary: 'KAPAP', time: '19:00-22:00', location: '阿佐ヶ谷駅' }]);
     assert.deepEqual(w.days[0].events, [], '前の中身は残らない');
   });
-  assert.equal(f.commits.length, 1, '1回の呼び出し = 1コミット');
-  assert.ok(f.commits[0].message.startsWith('week: '), 'コミット文で用途が分かる');
+  assert.equal(f.commits.length, 2, '取りこぼしの引き取りと、週の差し替えで1本ずつ');
+  assert.ok(f.commits[0].message.startsWith('tasks: 時間割の取りこぼし'), '拾ってから消す');
+  assert.ok(f.commits[1].message.startsWith('week: '), 'コミット文で用途が分かる');
+  const late = f.days().get('2026-09-07');
+  assert.equal(late.length, 1, '枠があった日付のまま入るので「未完了」に出る');
+  assert.equal(late[0].title, '仕事');
+  assert.equal(late[0].time, '07:00-19:00');
+  assert.equal(late[0].done, false);
+});
+
+test('set_week: ⭕️・これからの枠・薄い枠は引き取らない', async () => {
+  const f = fixture();
+  f.weekStore = {
+    text: JSON.stringify({
+      week: '2026-09-07', updated: '2026-09-07T08:00:00+09:00',
+      start_hour: 5, end_hour: 26, dim: ['睡眠'],
+      events: [
+        { summary: 'やった', start: '2026-09-07T07:00:00+09:00',
+          end: '2026-09-07T08:00:00+09:00', status: 'done' },
+        { summary: 'やらなかった', start: '2026-09-07T09:00:00+09:00',
+          end: '2026-09-07T10:00:00+09:00', status: 'miss' },
+        { summary: '睡眠', start: '2026-09-07T23:00:00+09:00', end: '2026-09-08T06:00:00+09:00' },
+        { summary: 'まだ先', start: '2099-09-07T09:00:00+09:00', end: '2099-09-07T10:00:00+09:00' }
+      ]
+    }, null, 2) + '\n',
+    sha: 'w0'
+  };
+  await withClient(f.io, async client => {
+    const r = payload(await call(client, 'set_week', {
+      week: '2026-09-07',
+      events: [{ summary: '別の予定', start: '2026-09-07T12:00:00+09:00',
+                 end: '2026-09-07T13:00:00+09:00' }]
+    }));
+    assert.deepEqual(r.carried, [{ date: '2026-09-07', title: 'やらなかった', was: 'miss' }]);
+  });
+  assert.deepEqual(f.days().get('2026-09-07').map(t => t.title), ['やらなかった']);
+});
+
+test('set_week: 同じ取りこぼしを二度は足さない', async () => {
+  const f = fixture();
+  const next = {
+    week: '2026-09-07',
+    events: [{ summary: '別の予定', start: '2026-09-07T12:00:00+09:00',
+               end: '2026-09-07T13:00:00+09:00' }]
+  };
+  await withClient(f.io, async client => {
+    await call(client, 'set_week', next);
+    // 週の更新が転んだあとの呼び直しの真似。前の写しを戻して同じ入れ替えをもう一度
+    f.weekStore = { text: WEEK0, sha: f.weekStore.sha };
+    const again = payload(await call(client, 'set_week', next));
+    assert.equal(again.carried, undefined, '既に同じ名前で入っているので足さない');
+  });
+  assert.equal(f.days().get('2026-09-07').length, 1);
 });
 
 test('set_week: 中身が同じなら書かない', async () => {
@@ -426,15 +479,22 @@ test('set_week: 壊れた入力は書かずにエラーを返す', async () => {
 test('週とタスクは別のファイル。互いに壊さない', async () => {
   const f = fixture();
   await withClient(f.io, async client => {
+    // 前の写しの「仕事」はそのまま残すので、タスクへ引き取るものは出ない
     await call(client, 'set_week', {
       week: '2026-09-07',
-      events: [{ summary: 'あ', start: '2026-09-07T10:00:00+09:00', end: '2026-09-07T11:00:00+09:00' }]
+      events: [
+        { summary: '仕事', start: '2026-09-07T07:00:00+09:00', end: '2026-09-07T19:00:00+09:00' },
+        { summary: 'あ', start: '2026-09-07T20:00:00+09:00', end: '2026-09-07T21:00:00+09:00' }
+      ]
     });
     assert.equal(f.text, ORIG, 'tasks.txt は無傷');
 
     await call(client, 'set_done', { ids: ['2026-08-28#1'], done: true });
     const w = payload(await call(client, 'get_week'));
-    assert.deepEqual(w.days[0].events, [{ summary: 'あ', time: '10:00-11:00' }], 'week.json も無傷');
+    assert.deepEqual(w.days[0].events, [
+      { summary: '仕事', time: '07:00-19:00' },
+      { summary: 'あ', time: '20:00-21:00' }
+    ], 'week.json も無傷');
   });
 });
 

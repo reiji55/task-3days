@@ -8,7 +8,7 @@ import {
   parse, snapshot, setDone, setMemo, setNext, updateTask, addTasks, removeTasks, moveTasks,
   pruneEmptyDays
 } from './tasks.js';
-import { buildWeek, sameContent, summary as weekSummary } from './week.js';
+import { buildWeek, missedFrom, sameContent, summary as weekSummary } from './week.js';
 import { setCard, removeCard, summary as boardSummary } from './board.js';
 import { readTasks, writeTasks, readWeek, writeWeek, readBoard, writeBoard } from './github.js';
 
@@ -191,6 +191,28 @@ export function createServer(io = {}) {
     out => `tasks: ${out.removed.length}件を削除`
   ));
 
+  /**
+   * 時間割から消える取りこぼしを、tasks.txt へ移す。
+   * 枠があった日付のまま入れるので、画面では「未完了」に出る。
+   * 同じ日に同じ名前があれば足さない（呼び直しても二重にならないように）。
+   */
+  async function carryMissed(gh, missed) {
+    if (!missed.length) return [];
+    const { text, sha } = await gh.readTasks();
+    const days = parse(text).days;
+    const add = missed.filter(m =>
+      !(days.get(m.date) || []).some(t => t.title === m.summary));
+    if (!add.length) return [];
+
+    let next = text;
+    for (const date of [...new Set(add.map(m => m.date))].sort()) {
+      next = addTasks(next, date, add.filter(m => m.date === date)
+        .map(m => ({ title: m.summary, time: m.time }))).text;
+    }
+    await gh.writeTasks(next, sha, `tasks: 時間割の取りこぼし${add.length}件を未完了へ`);
+    return add.map(m => ({ date: m.date, title: m.summary, was: m.status || 'late' }));
+  }
+
   /* ---------- 週間タイムテーブル（week.json） ---------- */
 
   server.registerTool('get_week', {
@@ -218,7 +240,10 @@ export function createServer(io = {}) {
       'week.json を丸ごと書き換える。ビューアの「週」がこれを読む。' +
       'Google カレンダーから取った1週間分の予定をそのまま渡す（追記ではなく全部入れ替え）。' +
       'week はその週のどこかの日付でよく、月曜に丸める。範囲外の予定は捨てる。' +
-      '毎週月曜の朝にこれを呼んで写しを入れ替える運用。',
+      '毎週月曜の朝にこれを呼んで写しを入れ替える運用。' +
+      '入れ替えで消える枠のうち、❌ を付けたものと、印が無いまま時間が過ぎたものは、' +
+      '元の日付のタスクとして tasks.txt に自動で移り、画面の「未完了」に出る' +
+      '（何を移したかは carried に返る）。',
     inputSchema: {
       week: z.string().describe('対象の週。YYYY-MM-DD。週内のどの日でも月曜に丸める'),
       events: z.array(z.object({
@@ -245,8 +270,14 @@ export function createServer(io = {}) {
       if (sameContent(built.json, cur.text)) {
         return ok({ week: built.week, events: built.kept, changed: false, note: '変更ありません' });
       }
+      // 消える枠の取りこぼしを先に拾う。順番を逆にすると、
+      // タスク側の書き込みが転んだときに拾えないまま消えてしまう
+      const carried = await carryMissed(gh, missedFrom(cur.text, built.events));
       await gh.writeWeek(built.json, cur.sha, `week: ${built.week} の週を更新（${built.kept}件）`);
-      return ok({ week: built.week, events: built.kept, dropped: built.dropped, changed: true });
+      return ok({
+        week: built.week, events: built.kept, dropped: built.dropped,
+        ...(carried.length ? { carried } : {}), changed: true
+      });
     } catch (e) { return ng(e); }
   });
 

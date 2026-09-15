@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-must">
+<meta name="app-version" content="2026-09-15-carry">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -231,12 +231,12 @@ button.box:active{transform:scale(.9)}
 .to-guide{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
   text-underline-offset:2px;text-decoration-color:var(--ink-3)}
 .to-guide:active{opacity:.55}
+/* このカードのタスクが、いまどのタブに何件あるかの内訳。読むだけで、叩けない */
 .bd-tasks{
-  appearance:none;margin-top:11px;border:0;border-radius:999px;cursor:pointer;
-  font:inherit;font-size:11.5px;font-weight:650;padding:3px 11px;
+  display:inline-block;margin-top:11px;border-radius:999px;
+  font-size:11.5px;font-weight:650;padding:3px 11px;
   background:rgba(0,0,0,.14);color:#14130f;
 }
-.bd-tasks:active{opacity:.6}
 .tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
 .task.done .tag{opacity:.5}
 .more{grid-column:2 / -1;display:none;gap:6px;margin-top:8px}
@@ -880,7 +880,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
         <form class="compose" id="bd-new" hidden>
           <input id="bd-new-text" type="text" enterkeyhint="done" autocomplete="off"
                  autocapitalize="off" spellcheck="false"
-                 placeholder="やり方を書く案件…">
+                 placeholder="新規ガイド…">
           <button type="submit" aria-label="カードを足す">＋</button>
         </form>
 
@@ -1499,6 +1499,15 @@ let opened = new Set();
 
 const short = key => { const [, m, d] = key.split('-'); return `${+m}/${+d}`; };
 
+// 3日の窓（昨日・今日・明日）。タブの並びも、内訳の呼び名もここから引く
+function window3(now = new Date()){
+  return {
+    today: ymd(now),
+    win: [-1, 0, 1].map(off =>
+      ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + off)))
+  };
+}
+
 /* ---- タスクとガイドの結びつけ ----
    タスクは「いま何をするか」、ガイドは「どうやるか」。案件名で結ぶ。
    名前がどちらかに含まれていれば同じものとみなす（「TOEIC」と「TOEIC対策」） */
@@ -1512,13 +1521,25 @@ function cardFor(proj){
   if (!board || !String(proj || '').trim()) return -1;
   return board.cards.findIndex(c => sameName(c.title, proj));
 }
-// そのカードに結びつく、残っているタスクの数
+/* そのカードに結びつく、残っているタスクがどこに何件あるか。
+   3日の面へ飛ばしても「どこへ連れて行かれたのか」が分からないので、
+   居場所をそのまま名前で出す。並びは画面のタブと同じ順にそろえる */
 function openFor(title){
-  if (!String(title || '').trim()) return 0;
-  let n = 0;
-  for (const list of parse(text).days.values())
-    for (const t of list) if (!t.done && sameName(t.proj, title)) n++;
-  return n;
+  if (!String(title || '').trim()) return [];
+  const { today, win } = window3();
+  const name = key =>
+    key === ANYTIME ? 'いつでも'
+    : win.includes(key) ? (key === today ? '今日' : short(key))
+    : key < today ? '未完了' : '先の予定';
+
+  const n = new Map();
+  for (const [key, list] of parse(text).days)
+    for (const t of list) if (!t.done && sameName(t.proj, title)) {
+      const w = name(key);
+      n.set(w, (n.get(w) || 0) + 1);
+    }
+  const order = ['未完了', ...win.map(k => k === today ? '今日' : short(k)), 'いつでも', '先の予定'];
+  return order.filter(w => n.has(w)).map(w => `${w} ${n.get(w)}件`);
 }
 // 案件の札。当たるカードがあれば、叩いてガイドへ飛べる
 function projTag(cls, proj){
@@ -1856,10 +1877,7 @@ function render(days){
   const app = document.getElementById('app');
   const keepY = window.scrollY;   // 作り直すので、見ていた位置に戻す
   app.textContent = '';
-  const now = new Date();
-  const todayKey = ymd(now);
-  const win = [-1, 0, 1].map(off =>
-    ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + off)));
+  const { today: todayKey, win } = window3();
   const anytime = days.get(ANYTIME) || [];
 
   // 3日の窓の外。過ぎていて残っているものと、先の予定
@@ -2501,13 +2519,9 @@ function bdCard(c, i){
   node.setAttribute('role','button');
   node.append(el('div','bd-when', c.created || ''),
               el('div','bd-name', (c.title || '').trim() || '(無題)'));
-  // 「どうやるか」の裏で、いま何件残っているか。叩けば3日の面へ
-  const n = openFor(c.title);
-  if (n) {
-    const link = el('button','bd-tasks', `残り ${n} 件`);
-    link.addEventListener('click', e => { e.stopPropagation(); setView('days'); });
-    node.append(link);
-  }
+  // 「どうやるか」の裏で、いまどこに何件残っているか
+  const where = openFor(c.title);
+  if (where.length) node.append(el('div','bd-tasks', where.join('・')));
   node.addEventListener('click', () => { bdBack = ''; bdShow(i); });   // 一覧から開いたぶん
   return node;
 }

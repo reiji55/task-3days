@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWeek, summary, mondayOf, stampNow, sameContent, DIM_DEFAULT } from '../lib/week.js';
+import {
+  buildWeek, missedFrom, summary, mondayOf, stampNow, sameContent, DIM_DEFAULT
+} from '../lib/week.js';
 
 const NOW = new Date('2026-09-09T14:20:00+09:00');     // 9/7 の週の水曜
 const STAMP = '2026-09-07T08:00:00+09:00';
@@ -188,4 +190,42 @@ test('sameContent: updated の違いだけなら同じとみなす', () => {
   assert.equal(sameContent(a, c), false, '予定が違えば別物');
   assert.equal(sameContent(a, ''), false, '空や壊れた相手とは一致させない');
   assert.equal(sameContent(a, '{ とちゅうで'), false);
+});
+
+/* ---- 取りこぼしの引き取り ---- */
+
+// 9/7 の週。⭕️・❌・印なしで終わったもの・まだ来ていないもの・薄い枠を1本ずつ
+const OLD = buildWeek({
+  week: '2026-09-07',
+  events: [
+    ev('やった',   '2026-09-07T07:00:00+09:00', '2026-09-07T08:00:00+09:00', { status: 'done' }),
+    ev('やらない', '2026-09-08T09:00:00+09:00', '2026-09-08T10:00:00+09:00', { status: 'miss' }),
+    ev('ほったらかし', '2026-09-09T09:00:00+09:00', '2026-09-09T10:00:00+09:00'),
+    ev('これから', '2026-09-11T09:00:00+09:00', '2026-09-11T10:00:00+09:00'),
+    ev('睡眠',     '2026-09-10T00:00:00+09:00', '2026-09-10T06:00:00+09:00')
+  ]
+}, { updated: STAMP }).json;
+
+test('missedFrom: ❌ と、印が無いまま終わったものだけ拾う', () => {
+  const got = missedFrom(OLD, [], { now: NOW });
+  assert.deepEqual(got, [
+    { date: '2026-09-08', summary: 'やらない',     time: '09:00-10:00', status: 'miss' },
+    { date: '2026-09-09', summary: 'ほったらかし', time: '09:00-10:00', status: '' }
+  ]);
+});
+
+test('missedFrom: 新しい写しに残る枠は拾わない（週の途中の取り直し）', () => {
+  const same = JSON.parse(OLD).events;
+  assert.deepEqual(missedFrom(OLD, same, { now: NOW }), [], '全部残るなら何も出ない');
+
+  // ❌ の枠だけカレンダーから消えた場合
+  const gone = same.filter(e => e.summary !== 'やらない');
+  assert.deepEqual(missedFrom(OLD, gone, { now: NOW }).map(e => e.summary), ['やらない']);
+});
+
+test('missedFrom: 前の写しが無い・読めないなら何も拾わない', () => {
+  assert.deepEqual(missedFrom('', [], { now: NOW }), []);
+  assert.deepEqual(missedFrom('{ とちゅうで', [], { now: NOW }), []);
+  assert.deepEqual(missedFrom('{"events":[{"summary":"欠け"}]}', [], { now: NOW }), [],
+    '時刻の無い行は読み飛ばす');
 });

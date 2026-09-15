@@ -145,9 +145,43 @@ export function buildWeek(input, { updated, tz = 'Asia/Tokyo', now = new Date(),
   return {
     json: JSON.stringify(body, null, 2) + '\n',
     week,
+    events,
     kept: events.length,
     dropped: all.length - events.length
   };
+}
+
+/**
+ * 写しを入れ替えたときに消える枠のうち、取りこぼしたものを拾う。
+ *
+ * 週が変わると先週の枠はまるごと消えるので、❌ を付けたものも、
+ * 印を付けないまま時間だけ過ぎたもの（画面で光っていたもの）も一緒に流れてしまう。
+ * この2つは「やらなかった」という意味では同じなので、消える前に拾い出して
+ * タスクの方へ送る。⭕️ と、まだ来ていない枠と、薄く出している枠（睡眠など）は拾わない。
+ *
+ * @param {string} oldText 入れ替える前の week.json
+ * @param {object[]} events 新しい写しに残る予定
+ * @returns {{date:string, summary:string, time:string, status:string}[]} 元の日付の順
+ */
+export function missedFrom(oldText, events, { now = new Date() } = {}) {
+  let was;
+  try { was = JSON.parse(oldText); } catch (e) { return []; }   // 読めなければ拾えない
+  const kept = new Set((events || []).map(keyOf));
+  const dim = Array.isArray(was.dim) ? was.dim : DIM_DEFAULT;
+  const faint = e => dim.some(k => k && String(e.summary || '').includes(k));
+
+  return (was.events || [])
+    .filter(e => e && STAMP_RE.test(String(e.start)) && STAMP_RE.test(String(e.end)))
+    .filter(e => !kept.has(keyOf(e)) && !faint(e))
+    .filter(e => e.status === 'miss'
+              || (!e.status && Date.parse(e.end) <= now.getTime()))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+    .map(e => ({
+      date: e.start.slice(0, 10),
+      summary: e.summary,
+      time: `${e.start.slice(11, 16)}-${e.end.slice(11, 16)}`,
+      status: e.status || ''
+    }));
 }
 
 /** updated の違いだけなら「同じ」とみなす。見に行っただけで書かないため。 */
