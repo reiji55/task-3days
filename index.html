@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-link">
+<meta name="app-version" content="2026-09-15-must">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -166,16 +166,31 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .task-act{
   position:absolute;inset:0;display:flex;justify-content:flex-end;align-items:stretch;
   background:var(--warn);border-radius:11px;
-  /* 普段は消しておく。札とぴったり重なっていても、角の丸みのふちに赤が滲む */
-  opacity:0;transition:opacity .12s linear;
+  /* 普段は消しておく。札とぴったり重なっていても、角の丸みのふちに赤が滲む。
+     透明なだけの面は指を受け取ってしまうので、出ていない間は通り抜けさせる */
+  opacity:0;transition:opacity .12s linear;pointer-events:none;
 }
-.task-wrap.swipe .task-act,
-.task-wrap.bare .task-act{opacity:1;transition:none}
+.task-wrap.dir-l .task-act,
+.task-wrap.bare .task-act{opacity:1;transition:none;pointer-events:auto}
 .task-del{
   appearance:none;border:0;background:transparent;cursor:pointer;
   width:88px;color:#fff;font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
 }
 .task-del:active{opacity:.7}
+/* 右へ払うと左端から出る面。中身は場所によって変わる（MUST へ／今日へ） */
+.task-act2{
+  position:absolute;inset:0;display:flex;justify-content:flex-start;align-items:stretch;
+  background:var(--accel);border-radius:11px;
+  opacity:0;transition:opacity .12s linear;pointer-events:none;
+}
+.task-wrap:not([data-right]) .task-act2{display:none}
+.task-wrap.dir-r .task-act2,
+.task-wrap.bare-r .task-act2{opacity:1;transition:none;pointer-events:auto}
+.task-add{
+  appearance:none;border:0;background:transparent;cursor:pointer;
+  width:104px;color:#fff;font:inherit;font-size:13px;font-weight:650;letter-spacing:.04em;
+}
+.task-add:active{opacity:.7}
 .task{
   position:relative;
   background:var(--panel); border:1px solid var(--line); border-radius:11px;
@@ -185,6 +200,9 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 }
 .task-wrap.swipe .task{transition:none}
 .task-wrap.bare .task{transform:translateX(-88px)}
+.task-wrap.bare-r .task{transform:translateX(104px)}
+/* MUST の節は時刻より先。見出しだけ強くして、札の形は他と同じにする */
+.grp.is-must .grp-head{color:var(--ink);font-weight:700;letter-spacing:.08em}
 .box{
   width:19px;height:19px;border-radius:6px;border:1.5px solid var(--ink-3);
   margin-top:2px; display:grid; place-items:center; flex:none;
@@ -272,16 +290,12 @@ button.box:active{transform:scale(.9)}
 
 .empty{color:var(--ink-3);font-size:13px;padding:6px 2px 2px}
 
-.stale-act{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
-.past-move,.past-drop{
+.past-move{
   appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
   font:inherit;font-size:12px;padding:5px 13px;border-radius:999px;cursor:pointer;
   margin:0 0 16px;
 }
-.stale-act .past-move,.stale-act .past-drop{margin:0}
-/* 消す方は同じ形のまま色だけ変える。押し間違えても確認が挟まる */
-.past-drop{color:var(--warn);border-color:color-mix(in srgb, var(--warn) 40%, var(--line))}
-.past-move:active,.past-drop:active{opacity:.6}
+.past-move:active{opacity:.6}
 .note{font-size:12px;color:var(--ink-3);text-align:center;margin-top:26px;line-height:1.7}
 .err{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;color:var(--ink-2);font-size:13px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
@@ -1011,9 +1025,16 @@ function parse(src){
       else if (parts.length === 2) { time = parts[0]; title = parts[1]; }
       else { title = parts[0]; }
       curTask = { done, time: clean(time), type: clean(type), proj: clean(proj), title,
-                  memo:'', next:'', at:i, memoAt:[], nextAt:[] };
+                  memo:'', next:'', must:false, at:i, memoAt:[], nextAt:[], mustAt:[] };
       days.get(curDate).push(curTask);
       curTask.id = `${curDate}#${days.get(curDate).length}`;   // mcp 側と同じ付け方
+      return;
+    }
+
+    // MUST の印。行があれば立っている、という置き方。値は見ない
+    if (curTask && /^must\s*[:：]/i.test(line)) {
+      curTask.must = true;
+      curTask.mustAt.push(i);
       return;
     }
 
@@ -1065,7 +1086,7 @@ const opDone = (id, done) => src => {
 const opRemove = id => src => {
   const at = find(src, id);
   if (!at) return src;
-  [at.task.at, ...at.task.memoAt, ...at.task.nextAt]
+  [at.task.at, ...at.task.memoAt, ...at.task.nextAt, ...at.task.mustAt]
     .sort((a, b) => b - a).forEach(i => at.lines.splice(i, 1));
   return at.lines.join('\n');
 };
@@ -1078,7 +1099,9 @@ const opAdd = title => src => {
   const list = days.get(ANYTIME) || [];
   if (headers.has(ANYTIME)) {
     const last = list.at(-1);
-    const at = last ? Math.max(last.at, ...last.memoAt) + 1 : headers.get(ANYTIME) + 1;
+    const at = last
+      ? Math.max(last.at, ...last.memoAt, ...last.nextAt, ...last.mustAt) + 1
+      : headers.get(ANYTIME) + 1;
     lines.splice(at, 0, row);
   } else {
     while (lines.length && lines.at(-1).trim() === '') lines.pop();
@@ -1102,6 +1125,20 @@ function tail(lines, headers, key){
   return end;
 }
 
+// 1本だけ、メモ・引き継ぎ・MUST の印ごと別の日の末尾へ移す
+const opCarryOne = (id, to) => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  const own = [at.task.at, ...at.task.memoAt, ...at.task.nextAt, ...at.task.mustAt]
+    .sort((a, b) => a - b);
+  const block = own.map(i => at.lines[i]);
+  own.slice().sort((a, b) => b - a).forEach(i => at.lines.splice(i, 1));
+  const left = parse(at.lines.join('\n'));          // 消したぶん位置がずれている
+  const spot = tail(left.lines, left.headers, to);
+  left.lines.splice(spot, 0, ...block);
+  return left.lines.join('\n');
+};
+
 // 未完了のぶんを、メモ・引き継ぎごと別の日の末尾へ移す。何日分でも受ける
 const opCarry = (from, to) => src => {
   const doc = parse(src);
@@ -1111,7 +1148,7 @@ const opCarry = (from, to) => src => {
 
   const cut = [];
   const blocks = list.map(task => {
-    const own = [task.at, ...task.memoAt, ...task.nextAt].sort((a, b) => a - b);
+    const own = [task.at, ...task.memoAt, ...task.nextAt, ...task.mustAt].sort((a, b) => a - b);
     own.forEach(i => cut.push(i));
     return own.map(i => doc.lines[i]);
   });
@@ -1123,15 +1160,21 @@ const opCarry = (from, to) => src => {
   return left.lines.join('\n');
 };
 
-// 未完了のぶんを、メモ・引き継ぎごと消す。繰り越しの逆で、行き先が無い版
-const opDrop = from => src => {
-  const doc = parse(src);
-  const keys = Array.isArray(from) ? from : [from];
-  const list = keys.flatMap(k => (doc.days.get(k) || []).filter(t => !t.done));
-  if (!list.length) return src;
-  const cut = list.flatMap(t => [t.at, ...t.memoAt, ...t.nextAt]);
-  cut.sort((a, b) => b - a).forEach(i => doc.lines.splice(i, 1));
-  return doc.lines.join('\n');
+/* MUST の印を立てる／外す。位置は動かさない。
+   動かして戻すと「元あったところ」を覚えておく必要があるが、
+   印なら外した瞬間にいつもの並び（終日・時刻順）へ戻る */
+const opMust = (id, on) => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  const { lines, task } = at;
+  if (on === task.must) return src;
+  if (on) {
+    const indent = (lines[task.at].match(/^\s*/) || [''])[0] + '  ';
+    lines.splice(task.at + 1, 0, indent + 'must: 1');
+  } else {
+    task.mustAt.slice().sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
+  }
+  return lines.join('\n');
 };
 
 // memo: / next: の行を丸ごと差し替える。1行につきタグ1本、で往復できる
@@ -1486,6 +1529,7 @@ function projTag(cls, proj){
   tag.setAttribute('aria-label', `ガイドを開く: ${proj}`);
   tag.addEventListener('click', e => {
     e.stopPropagation();                    // 札を開く方には渡さない
+    bdBack = view;                          // 閉じたら、ここへ帰す
     setView('board');
     bdShow(at);
   });
@@ -1560,6 +1604,7 @@ function renderCard(t, lead, fold){
     box = el('div','box');
   }
   card.dataset.id = t.id;                           // 描き直したあと同じ札を見つける目印
+  if (t.must) card.dataset.must = '1';              // 右へ払ったとき、どちらへ倒すか
   card.append(box, el('div','title', t.title));
 
   if (pin) {
@@ -1658,14 +1703,30 @@ function renderOne(key, list, anytime, todayKey){
     sec.append(move);
   }
 
+  // MUST は時刻より先。印を外せば、いつもの並びへそのまま戻る
+  const must = list.filter(t => t.must);
+  if (must.length) {
+    const g = el('div','grp is-must');
+    g.append(el('div','grp-head','MUST'));
+    for (const t of must) g.append(flatRow(
+      rightAct(renderCard(t, null, true).wrap, 'must', 'MUST を外す',
+               () => toggleMust(t.id, false, t.title))));
+    sec.append(g);
+  }
+
   const timed = [], allday = [];
-  for (const t of list) (clock(t.time) ? timed : allday).push(t);
+  for (const t of list) {
+    if (t.must) continue;                          // 上に出したので二度は出さない
+    (clock(t.time) ? timed : allday).push(t);
+  }
   timed.sort((a, b) => clock(a.time).from - clock(b.time).from);
 
   if (allday.length) {
     const g = el('div','grp is-allday');
     g.append(el('div','grp-head','終日'));
-    for (const t of allday) g.append(flatRow(renderCard(t, null, true).wrap));
+    for (const t of allday) g.append(flatRow(
+      rightAct(renderCard(t, null, true).wrap, 'must', 'MUST へ',
+               () => toggleMust(t.id, true, t.title))));
     sec.append(g);
   }
 
@@ -1688,6 +1749,7 @@ function renderOne(key, list, anytime, todayKey){
       const row = el('div','tl-row');
       row.append(el('div','tl-at', hhmm(at.from)));
       const { wrap, card } = renderCard(t, lead.childNodes.length ? lead : null);
+      rightAct(wrap, 'must', 'MUST へ', () => toggleMust(t.id, true, t.title));
       card.style.setProperty('--c', hue(t.proj || t.title));
       if (isToday && !t.done && at.to != null && mins >= at.from && mins < at.to) {
         card.classList.add('now');
@@ -1718,6 +1780,26 @@ function nowLine(mins){
   return row;
 }
 
+/* 右へ払ったときに出る面を付ける。何が起きるかは呼ぶ側が決める。
+   左へ払う＝削除は全部の札に付いているが、右は場所によって意味が違う */
+function rightAct(wrap, kind, label, run){
+  if (!pin) return wrap;
+  wrap.dataset.right = kind;
+  const act = el('div','task-act2');
+  const b = el('button','task-add', label);
+  b.addEventListener('click', run);
+  act.append(b);
+  wrap.prepend(act);
+  return wrap;
+}
+
+// MUST に入れる／出す。印を立てるだけなので、外せばいつもの並びへ戻る
+function toggleMust(id, on, title){
+  edit(opMust(id, on), `tasks: MUST に${on ? '入れる' : '出す'}（${title}）`);
+  opened.clear();                                   // 並びが変わるので開き直す
+  draw();
+}
+
 // 時刻の無い札。左の時刻の欄は空けたまま、タイムラインと頭を揃える
 function flatRow(wrap){
   const row = el('div','flat-row');
@@ -1732,23 +1814,13 @@ function renderStale(days, stale, ahead, todayKey){
 
   const all = stale.flatMap(k => (days.get(k) || []).filter(t => !t.done));
   if (pin && all.length) {
-    const row = el('div','stale-act');
     const move = el('button','past-move', `まとめて今日へ（${all.length}件）`);
     move.addEventListener('click', () => {
       edit(opCarry(stale, todayKey), `tasks: ${all.length}件を今日へ繰り越し`);
       opened.clear();                                // 並びが変わるので開き直す
       draw();
     });
-    // もうやらないものを畳む。送るのと同じ場所に置いて、two択にする
-    const drop = el('button','past-drop', `まとめて消す（${all.length}件）`);
-    drop.addEventListener('click', () => {
-      if (!confirm(`残っている ${all.length}件を消しますか？\n（GitHub の履歴には残ります）`)) return;
-      edit(opDrop(stale), `tasks: ${all.length}件を削除（未完了）`);
-      opened.clear();
-      draw();
-    });
-    row.append(move, drop);
-    sec.append(row);
+    sec.append(move);
   }
 
   for (const k of stale) {
@@ -1756,7 +1828,12 @@ function renderStale(days, stale, ahead, todayKey){
     if (!left.length) continue;
     const g = el('div','grp is-late');
     g.append(el('div','grp-head', label(k)));
-    for (const t of left) g.append(flatRow(renderCard(t).wrap));
+    for (const t of left) g.append(flatRow(
+      rightAct(renderCard(t).wrap, 'today', '今日へ', () => {
+        edit(opCarryOne(t.id, todayKey), `tasks: 今日へ繰り越し（${t.title}）`);
+        opened.clear();
+        draw();
+      })));
     sec.append(g);
   }
 
@@ -2431,7 +2508,7 @@ function bdCard(c, i){
     link.addEventListener('click', e => { e.stopPropagation(); setView('days'); });
     node.append(link);
   }
-  node.addEventListener('click', () => bdShow(i));
+  node.addEventListener('click', () => { bdBack = ''; bdShow(i); });   // 一覧から開いたぶん
   return node;
 }
 
@@ -2472,6 +2549,9 @@ function renderBoard(){
 const PEEK = 64, FULL = 18;
 let bdAt = -1;                   // 開いているカード。-1 は一覧
 let bdUp = false;                // 白い面が上まで来ているか
+// タスクの案件タグから飛んできたときの、帰り先。
+// 一覧に落とすと「ガイドを見に来ただけ」なのに置き去りにされた感じになる
+let bdBack = '';
 
 const sheet = () => document.getElementById('bd-sheet');
 const detail = () => document.getElementById('bd-detail');
@@ -2597,6 +2677,9 @@ function bdHide(){
   document.body.style.overflow = '';
   setTimeout(() => { if (bdAt < 0) box.hidden = true; }, 360);
   renderBoard();                                 // 見出しを直していたら一覧にも映す
+  // 見に来ただけなら、元いた面へ帰す
+  if (bdBack && bdBack !== 'board') { const to = bdBack; bdBack = ''; setView(to); }
+  bdBack = '';
 }
 
 // 隣のカードへ。横に払って1枚ずつ送る
@@ -2794,24 +2877,26 @@ function setView(next){
    左へ払うと赤い面が出る。そこを叩くと消える。
    出してから叩く2手なので、確認は挟まない（✕ の方は今までどおり確認する）。 */
 (() => {
-  const WAKE = 8, SLOPE = 1.2, WIDE = 88, GO = 40;
-  let wrap = null, card = null, x0 = 0, y0 = 0, base = 0, lock = 'no';
+  const WAKE = 8, SLOPE = 1.2, WIDE = 88, WIDE_R = 104, GO = 40;
+  let wrap = null, card = null, x0 = 0, y0 = 0, base = 0, lock = 'no', right = '';
 
-  const shut = except => document.querySelectorAll('.task-wrap.bare')
-    .forEach(n => { if (n !== except) n.classList.remove('bare'); });
+  const shut = except => document.querySelectorAll('.task-wrap.bare, .task-wrap.bare-r')
+    .forEach(n => { if (n !== except) n.classList.remove('bare', 'bare-r'); });
 
   addEventListener('touchstart', e => {
     lock = 'no';
     if (view !== 'days' || !pin || e.touches.length !== 1) return;
     const t = e.touches[0];
     if (!t.target.closest) return;
-    if (t.target.closest('textarea, input, .task-del')) return;
+    if (t.target.closest('textarea, input, .task-del, .task-add')) return;
     const w = t.target.closest('.task-wrap');
     if (!w) { shut(); return; }
     wrap = w;
     card = w.querySelector('.task');
+    right = w.dataset.right || '';
     x0 = t.clientX; y0 = t.clientY;
-    base = w.classList.contains('bare') ? -WIDE : 0;
+    base = w.classList.contains('bare') ? -WIDE
+         : w.classList.contains('bare-r') ? WIDE_R : 0;
     lock = null;
   }, { passive: true });
 
@@ -2826,8 +2911,13 @@ function setView(next){
       shut(wrap);
     }
     if (e.cancelable) e.preventDefault();
-    let x = Math.min(0, base + dx);
+    let x = base + dx;
+    if (x > 0 && !right) x = 0;                      // 右に用意が無ければ動かさない
     if (x < -WIDE) x = -WIDE - (-WIDE - x) / 3;      // 行き過ぎは重くする
+    if (x > WIDE_R) x = WIDE_R + (x - WIDE_R) / 3;
+    // 出す面は行き先で決める。左右を同時に出すと重なって色が濁る
+    wrap.classList.toggle('dir-l', x < 0);
+    wrap.classList.toggle('dir-r', x > 0);
     card.style.transform = `translateX(${x}px)`;
   }, { passive: false });
 
@@ -2835,10 +2925,21 @@ function setView(next){
     if (lock !== 'x' || !wrap) { lock = 'no'; wrap = null; return; }
     lock = 'no';
     const dx = e.changedTouches[0].clientX - x0;
+    const x = base + dx;
+    const w = wrap, c = card;
     card.style.transform = '';
-    wrap.classList.remove('swipe');
-    wrap.classList.toggle('bare', base + dx < -GO);
+    w.classList.remove('swipe', 'dir-l', 'dir-r');
     wrap = null; card = null;
+
+    // MUST は払いきったその場で入れ替える。押す手間を挟まない
+    if (right === 'must' && x > GO) {
+      w.classList.remove('bare', 'bare-r');
+      const title = (w.querySelector('.title') || {}).textContent || '';
+      toggleMust(c.dataset.id, c.dataset.must !== '1', title);
+      return;
+    }
+    w.classList.toggle('bare', x < -GO);
+    w.classList.toggle('bare-r', right === 'today' && x > GO);
   }, { passive: true });
 })();
 
@@ -3066,6 +3167,7 @@ document.getElementById('bd-new').addEventListener('submit', e => {
   board.cards.push({ id: 'c' + Date.now().toString(36), title, created: ymd(new Date()) });
   document.getElementById('bd-q').value = '';    // 絞り込みで見えないと困る
   renderBoard();
+  bdBack = '';
   bdShow(board.cards.length - 1);                // そのまま中身を書き始められる
   touchBoard(`board: カードを追加（${title}）`);
 });

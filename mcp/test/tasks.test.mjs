@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parse, writeDone, writeMemo, findTask, snapshot, todayKey, windowKeys } from '../lib/tasks.js';
+import { parse, writeDone, writeMemo, findTask, snapshot, todayKey, windowKeys,
+  removeTasks, moveTasks, addTasks } from '../lib/tasks.js';
 
 const ORIG = readFileSync(new URL('./fixture.txt', import.meta.url), 'utf8');
 
@@ -122,4 +123,53 @@ test('snapshot: all はファイル内の全日付を日付順で返す', () => 
   const { days } = parse(ORIG);
   const s = snapshot(days, 'all', 'Asia/Tokyo', new Date('2027-05-05T03:00:00Z'));
   assert.deepEqual(s.days.map(d => d.date), ['2026-08-27', '2026-08-28', '2026-08-29']);
+});
+
+/* ---- MUST の印（`must:` 行）は、どの操作でも置き去りにしない ---- */
+
+const MUST_SRC = [
+  '# 2026-08-28',
+  '- [ ] 10:00-11:00 | 前進 | 転職 | 方針を固める',
+  '  memo: 1枚に残す',
+  '  must: 1',
+  '- [ ] ふつうのタスク',
+  '',
+  '# 2026-08-29',
+  '- [ ] 明日の分',
+  ''
+].join('\n');
+
+test('parse: must: 行を印として読む', () => {
+  const { days } = parse(MUST_SRC);
+  const [a, b] = days.get('2026-08-28');
+  assert.equal(a.must, true);
+  assert.equal(a.memo, '1枚に残す');          // メモと取り違えない
+  assert.deepEqual(a.mustAt.length, 1);
+  assert.equal(b.must, false);
+});
+
+test('removeTasks: must: の行も一緒に消す（迷子の行を残さない）', () => {
+  const out = removeTasks(MUST_SRC, ['2026-08-28#1']).text;
+  assert.ok(!out.includes('must:'), 'must: の行が残っていない');
+  assert.ok(!out.includes('方針を固める'));
+  assert.ok(out.includes('ふつうのタスク'), '隣のタスクは無事');
+});
+
+test('moveTasks: 動かしても MUST のままついていく', () => {
+  const out = moveTasks(MUST_SRC, ['2026-08-28#1'], '2026-08-29').text;
+  const { days } = parse(out);
+  const moved = days.get('2026-08-29').find(t => t.title === '方針を固める');
+  assert.equal(moved.must, true, '移った先でも印が立っている');
+  assert.equal(moved.memo, '1枚に残す', 'メモも一緒');
+  assert.equal((days.get('2026-08-28') || []).length, 1, '元の日からは消える');
+  assert.equal(out.match(/must:/g).length, 1, 'must: は1本だけ');
+});
+
+test('addTasks: MUST 付きで足せる。次のタスクは下に入る', () => {
+  const one = addTasks(MUST_SRC, '2026-08-29',
+    [{ title:'新しい要', must:true }]).text;
+  assert.ok(one.includes('- [ ] 新しい要\n  must: 1'), 'must: が付いて入る');
+  const two = addTasks(one, '2026-08-29', [{ title:'その次' }]).text;
+  assert.ok(two.includes('  must: 1\n- [ ] その次'),
+    'must: の行をまたいで、次のタスクがその後ろに入る');
 });

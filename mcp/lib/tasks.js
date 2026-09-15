@@ -17,11 +17,14 @@ const ANYTIME_RE = /^#\s*(いつでも|anytime|inbox)\s*$/i;
 
 /**
  * @returns {{ lines: string[], days: Map<string, object[]>, headers: Map<string, number> }}
- *   task: { id, date, index, done, time, type, kind, proj, title, memo, next, at, memoAt, nextAt }
+ *   task: { id, date, index, done, time, type, kind, proj, title, memo, next, must,
+ *           at, memoAt, nextAt, mustAt }
  *   at      … その行の lines 上の位置
  *   memoAt  … メモを構成している行の位置（複数可）
  *   next    … Claude に引き継ぎたいこと（`next:` 行）
  *   nextAt  … その行の位置（複数可）
+ *   must    … 「MUST」に入れてあるか（`must:` 行があるか）
+ *   mustAt  … その行の位置。消す・動かすときに置き去りにしないため
  *   headers … 日付見出しの行の位置
  */
 export function parse(text) {
@@ -67,11 +70,20 @@ export function parse(text) {
         title,
         memo: '',
         next: '',
+        must: false,
         at: i,
         memoAt: [],
-        nextAt: []
+        nextAt: [],
+        mustAt: []
       };
       list.push(curTask);
+      return;
+    }
+
+    // 「今日これだけは」の印。行があれば立っている、という置き方
+    if (curTask && /^must\s*[:：]/i.test(line)) {
+      curTask.must = true;
+      curTask.mustAt.push(i);
       return;
     }
 
@@ -172,7 +184,7 @@ export function findTask(days, id) {
 const view = t => ({
   id: t.id, done: t.done, time: t.time || null, type: t.type || null,
   kind: t.kind, project: t.proj || null, title: t.title,
-  memo: t.memo || null, next: t.next || null
+  memo: t.memo || null, next: t.next || null, must: t.must || false
 });
 
 /** MCP が返す形。scope="window" なら3日分、"all" なら全部。 */
@@ -276,7 +288,8 @@ const tagBlock = (text, tag, indent = '  ') =>
 const normalize = t => ({
   done: !!t.done,
   time: field(t.time), type: field(t.type), proj: field(t.project ?? t.proj),
-  title: assertTitle(t.title), memo: String(t.memo ?? ''), next: String(t.next ?? '')
+  title: assertTitle(t.title), memo: String(t.memo ?? ''), next: String(t.next ?? ''),
+  must: !!t.must
 });
 
 const brief = t => ({ id: t.id, title: t.title });
@@ -329,6 +342,7 @@ export function removeTasks(text, ids) {
     kill.add(t.at);
     t.memoAt.forEach(i => kill.add(i));
     t.nextAt.forEach(i => kill.add(i));
+    t.mustAt.forEach(i => kill.add(i));
   }
   [...kill].sort((a, b) => b - a).forEach(i => lines.splice(i, 1));
   return { text: lines.join('\n'), removed: targets.map(brief) };
@@ -351,13 +365,16 @@ export function addTasks(text, date, items, { position = 'end', replace = false 
   }
 
   const { lines, days, headers } = parse(cur);
-  const block = list.flatMap(t => [formatTask(t), ...tagBlock(t.memo, 'memo'), ...tagBlock(t.next, 'next')]);
+  const block = list.flatMap(t => [formatTask(t),
+    ...tagBlock(t.memo, 'memo'), ...tagBlock(t.next, 'next'),
+    ...(t.must ? ['  must: 1'] : [])]);
 
   if (headers.has(date)) {
     const tasks = days.get(date) || [];
     const at = (position === 'start' || !tasks.length)
       ? headers.get(date) + 1
-      : Math.max(tasks.at(-1).at, ...tasks.at(-1).memoAt, ...tasks.at(-1).nextAt) + 1;
+      : Math.max(tasks.at(-1).at, ...tasks.at(-1).memoAt,
+                 ...tasks.at(-1).nextAt, ...tasks.at(-1).mustAt) + 1;
     lines.splice(at, 0, ...block);
   } else {
     // 日付順に並んでいるファイルなら、その位置に差し込む。でなければ末尾。
@@ -385,7 +402,7 @@ export function moveTasks(text, ids, date, position = 'end') {
   if (targets.some(t => t.date === date)) throw new Error(`既に ${date} にあるタスクが含まれています`);
   const carried = targets.map(t => ({
     done: t.done, time: t.time, type: t.type, project: t.proj, title: t.title,
-    memo: t.memo, next: t.next
+    memo: t.memo, next: t.next, must: t.must
   }));
   const cut = removeTasks(text, ids).text;
   const out = addTasks(cut, date, carried, { position });
