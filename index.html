@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-tidy">
+<meta name="app-version" content="2026-09-15-link">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -209,6 +209,16 @@ button.box:active{transform:scale(.9)}
 .tag.t-accel{color:var(--accel);background:var(--accel-bg)}
 .tag.t-routine{color:var(--routine);background:var(--routine-bg)}
 .tag.t-proj{color:var(--ink-2);background:var(--line-soft);font-weight:500}
+/* ガイドに同じ名前のカードがあるときだけ、叩けることを下線で示す */
+.to-guide{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px;text-decoration-color:var(--ink-3)}
+.to-guide:active{opacity:.55}
+.bd-tasks{
+  appearance:none;margin-top:11px;border:0;border-radius:999px;cursor:pointer;
+  font:inherit;font-size:11.5px;font-weight:650;padding:3px 11px;
+  background:rgba(0,0,0,.14);color:#14130f;
+}
+.bd-tasks:active{opacity:.6}
 .tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
 .task.done .tag{opacity:.5}
 .more{grid-column:2 / -1;display:none;gap:6px;margin-top:8px}
@@ -262,12 +272,16 @@ button.box:active{transform:scale(.9)}
 
 .empty{color:var(--ink-3);font-size:13px;padding:6px 2px 2px}
 
-.past-move{
+.stale-act{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.past-move,.past-drop{
   appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
   font:inherit;font-size:12px;padding:5px 13px;border-radius:999px;cursor:pointer;
   margin:0 0 16px;
 }
-.past-move:active{opacity:.6}
+.stale-act .past-move,.stale-act .past-drop{margin:0}
+/* 消す方は同じ形のまま色だけ変える。押し間違えても確認が挟まる */
+.past-drop{color:var(--warn);border-color:color-mix(in srgb, var(--warn) 40%, var(--line))}
+.past-move:active,.past-drop:active{opacity:.6}
 .note{font-size:12px;color:var(--ink-3);text-align:center;margin-top:26px;line-height:1.7}
 .err{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;color:var(--ink-2);font-size:13px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
@@ -306,21 +320,23 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 #panel button:active{opacity:.6}
 #panel a{color:inherit}
 
-#quick{display:flex;gap:7px;margin:0 0 18px}
-#quick[hidden]{display:none}
-#quick input{
+/* 足す入口。3日の面（タスク）とガイドの面（カード）で同じ形にする。
+   打った文字がそのまま名前になるので、作ってから名前を付け直さなくていい */
+.compose{display:flex;gap:7px;margin:0 0 18px}
+.compose[hidden]{display:none}
+.compose input{
   flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);
   background:var(--panel);border:1px solid var(--line);border-radius:11px;
   padding:9px 12px;box-shadow:var(--shadow);
 }
-#quick input::placeholder{color:var(--ink-3)}
-#quick input:focus{outline:none;border-color:var(--ink-3)}
-#quick button{
+.compose input::placeholder{color:var(--ink-3)}
+.compose input:focus{outline:none;border-color:var(--ink-3)}
+.compose button{
   appearance:none;font:inherit;font-size:16px;line-height:1;font-weight:600;
   width:42px;flex:none;border-radius:11px;cursor:pointer;
   border:1px solid var(--ink);background:var(--ink);color:var(--bg);
 }
-#quick button:active{opacity:.6}
+.compose button:active{opacity:.6}
 
 
 /* ---- ページを横に並べて、指で送る ---- */
@@ -522,6 +538,14 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   border-left:1.5px dashed color-mix(in srgb, var(--warn) 60%, transparent)}
 
 /* ---- 選んだ日の中身。ここで印を付ける ---- */
+/* 取りこぼしを拾い直す。表で光っているものと同じ色で結びつける */
+.wkli-pick{
+  grid-column:2;justify-self:start;margin:6px 0 0;
+  appearance:none;border:1px solid #ff5ca8;background:transparent;color:#ff5ca8;
+  font:inherit;font-size:11.5px;font-weight:650;padding:3px 12px;
+  border-radius:999px;cursor:pointer;
+}
+.wkli-pick:active{opacity:.55}
 .wk-cap{font-size:11px;color:var(--ink-3);margin:18px 0 10px;letter-spacing:.04em}
 .wk-cap span{opacity:.7}
 .wkli{display:grid;grid-template-columns:38px 1fr;gap:0 9px;margin-bottom:10px}
@@ -562,13 +586,6 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 /* ---- ボード（やり方を書き溜めておく読み物） ----
    一覧は色付きのカードを重ねて置き、タップすると全画面の詳細になる。
    詳細は上半分がカードの色、下から白い面がせり上がって中身を見せる。 */
-.bd-plus{
-  appearance:none;flex:none;width:34px;height:34px;border-radius:50%;
-  border:1px solid var(--line);background:var(--panel);color:var(--ink-2);
-  font:inherit;font-size:18px;line-height:1;cursor:pointer;
-}
-.bd-plus:active{opacity:.6}
-.bd-plus[hidden]{display:none}
 .bd-save{
   appearance:none;flex:none;white-space:nowrap;cursor:pointer;font:inherit;
   font-size:12px;font-weight:650;padding:5px 14px;border-radius:999px;
@@ -579,7 +596,8 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 
 .bd-search{
   display:flex;align-items:center;gap:9px;padding:0 4px;color:var(--ink-3);
-  margin:clamp(16px, 17vh, 170px) 0 0;      /* 見本と同じで、札は画面の下の方から */
+  /* 札は画面の下の方から始める。打ち込む欄が1行増えたぶん、空きを詰めた */
+  margin:clamp(16px, 11vh, 110px) 0 0;
 }
 .bd-search svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;
   stroke-width:1.8;stroke-linecap:round}
@@ -595,9 +613,11 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 #bd-stack{display:flex;flex-direction:column;padding-bottom:6px;margin-top:16px}
 
 /* カードは重ねる。下の1枚が覗いていることで「まだ続く」と分かる */
+/* 案件の色をそのまま敷くと濃すぎて黒い字が乗らない。
+   白で薄めて、色味だけ残す（3つの面で同じ色だと分かる程度に） */
 .bd-card{
   position:relative;border-radius:24px;padding:17px 20px 24px;
-  background:var(--c);color:#14130f;cursor:pointer;
+  background:color-mix(in srgb, var(--c) 34%, #fff);color:#14130f;cursor:pointer;
   box-shadow:0 -2px 10px -4px rgba(0,0,0,.22);
 }
 .bd-card + .bd-card{margin-top:-13px}
@@ -613,7 +633,7 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 #bd-detail{
   --rest:36%;                       /* 白い面が休んでいるときの、下からの高さ */
   position:fixed;inset:0;z-index:40;overflow:hidden;
-  background:var(--c,#eee);color:#14130f;
+  background:color-mix(in srgb, var(--c, #999) 34%, #fff);color:#14130f;
   transform:translateY(100%);
   transition:transform .34s cubic-bezier(.25,.8,.35,1);
 }
@@ -841,8 +861,14 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
                  autocapitalize="off" spellcheck="false" aria-label="カードを探す">
           <span id="bd-state"></span>
           <button class="bd-save" id="bd-save" hidden>保存</button>
-          <button class="bd-plus" id="bd-add" hidden aria-label="カードを足す">＋</button>
         </div>
+
+        <form class="compose" id="bd-new" hidden>
+          <input id="bd-new-text" type="text" enterkeyhint="done" autocomplete="off"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="やり方を書く案件…">
+          <button type="submit" aria-label="カードを足す">＋</button>
+        </form>
 
         <div id="bd-stack"></div>
       </section>
@@ -852,7 +878,7 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
     </div>
 
     <div class="pane" id="pane-days">
-      <form id="quick" hidden>
+      <form class="compose" id="quick" hidden>
         <input id="quick-text" type="text" enterkeyhint="done" autocomplete="off"
                autocapitalize="off" spellcheck="false"
                placeholder="すぐできること…（日付なし）">
@@ -1095,6 +1121,17 @@ const opCarry = (from, to) => src => {
   const at = tail(left.lines, left.headers, to);
   left.lines.splice(at, 0, ...blocks.flat());
   return left.lines.join('\n');
+};
+
+// 未完了のぶんを、メモ・引き継ぎごと消す。繰り越しの逆で、行き先が無い版
+const opDrop = from => src => {
+  const doc = parse(src);
+  const keys = Array.isArray(from) ? from : [from];
+  const list = keys.flatMap(k => (doc.days.get(k) || []).filter(t => !t.done));
+  if (!list.length) return src;
+  const cut = list.flatMap(t => [t.at, ...t.memoAt, ...t.nextAt]);
+  cut.sort((a, b) => b - a).forEach(i => doc.lines.splice(i, 1));
+  return doc.lines.join('\n');
 };
 
 // memo: / next: の行を丸ごと差し替える。1行につきタグ1本、で往復できる
@@ -1419,6 +1456,42 @@ let opened = new Set();
 
 const short = key => { const [, m, d] = key.split('-'); return `${+m}/${+d}`; };
 
+/* ---- タスクとガイドの結びつけ ----
+   タスクは「いま何をするか」、ガイドは「どうやるか」。案件名で結ぶ。
+   名前がどちらかに含まれていれば同じものとみなす（「TOEIC」と「TOEIC対策」） */
+const sameName = (a, b) => {
+  a = String(a || '').trim().toLowerCase();
+  b = String(b || '').trim().toLowerCase();
+  return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+};
+// 案件名に当たるガイドのカードの位置。無ければ -1
+function cardFor(proj){
+  if (!board || !String(proj || '').trim()) return -1;
+  return board.cards.findIndex(c => sameName(c.title, proj));
+}
+// そのカードに結びつく、残っているタスクの数
+function openFor(title){
+  if (!String(title || '').trim()) return 0;
+  let n = 0;
+  for (const list of parse(text).days.values())
+    for (const t of list) if (!t.done && sameName(t.proj, title)) n++;
+  return n;
+}
+// 案件の札。当たるカードがあれば、叩いてガイドへ飛べる
+function projTag(cls, proj){
+  const at = cardFor(proj);
+  const tag = el('span', cls + (at < 0 ? '' : ' to-guide'), proj);
+  if (at < 0) return tag;
+  tag.setAttribute('role','button');
+  tag.setAttribute('aria-label', `ガイドを開く: ${proj}`);
+  tag.addEventListener('click', e => {
+    e.stopPropagation();                    // 札を開く方には渡さない
+    setView('board');
+    bdShow(at);
+  });
+  return tag;
+}
+
 // 時間帯を時計として読む。「終日」「午前」「空欄」は読めないので null
 function clock(s){
   const m = String(s || '').match(/^(\d{1,2}):(\d{2})(?:\s*[-–—~〜]\s*(\d{1,2}):(\d{2}))?/);
@@ -1429,12 +1502,27 @@ function clock(s){
   };
 }
 
-// 案件ごとに色を1つ。一度決めたら同じ色を使い続ける
+/* 案件ごとに色を1つ。3つの面が同じ表を引くので、同じ案件は
+   ガイドでもタスクでも週でも同じ色になる。
+
+   並びは「ガイドのカード → タスクの案件 → 週の予定」で固定する。
+   カードの並び順で決めていた頃は、1枚足すと後ろの色が全部ずれていた。
+   名前で決めるので、足しても消しても動かない。 */
 const hue = (() => {
   const seen = new Map();
+  const add = name => {
+    const k = String(name || '').trim();
+    if (k && !seen.has(k)) seen.set(k, PALETTE[seen.size % PALETTE.length]);
+  };
+  // 知らない名前を引かれたときだけ、決まった順で登録し直す
+  const seed = () => {
+    if (board) for (const c of board.cards) add(c.title);
+    for (const list of parse(text).days.values()) for (const t of list) add(t.proj);
+    if (week) for (const e of (week.events || [])) add(groupOf(e.summary));
+  };
   return name => {
     const k = String(name || '').trim() || '—';
-    if (!seen.has(k)) seen.set(k, PALETTE[seen.size % PALETTE.length]);
+    if (!seen.has(k)) { seed(); add(k); }
     return seen.get(k);
   };
 })();
@@ -1491,7 +1579,7 @@ function renderCard(t, lead, fold){
     const k = TYPE_MAP[t.type] || '';
     meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
   }
-  if (!lead && t.proj) meta.append(el('span','tag t-proj', t.proj));
+  if (!lead && t.proj) meta.append(projTag('tag t-proj', t.proj));
   if (meta.childNodes.length) card.append(meta);
 
   // 畳んでいる間は、案件名と「隠れている中身が何か」だけを小さく出す
@@ -1594,7 +1682,7 @@ function renderOne(key, list, anytime, todayKey){
       if (!drawn && at.from > mins) { tl.append(nowLine(mins)); drawn = true; }
 
       const lead = el('div','lead');
-      if (t.proj) lead.append(el('span','lead-proj', t.proj));
+      if (t.proj) lead.append(projTag('lead-proj', t.proj));
       if (at.to != null) lead.append(el('span','lead-to', '〜' + hhmm(at.to)));
 
       const row = el('div','tl-row');
@@ -1644,13 +1732,23 @@ function renderStale(days, stale, ahead, todayKey){
 
   const all = stale.flatMap(k => (days.get(k) || []).filter(t => !t.done));
   if (pin && all.length) {
+    const row = el('div','stale-act');
     const move = el('button','past-move', `まとめて今日へ（${all.length}件）`);
     move.addEventListener('click', () => {
       edit(opCarry(stale, todayKey), `tasks: ${all.length}件を今日へ繰り越し`);
       opened.clear();                                // 並びが変わるので開き直す
       draw();
     });
-    sec.append(move);
+    // もうやらないものを畳む。送るのと同じ場所に置いて、two択にする
+    const drop = el('button','past-drop', `まとめて消す（${all.length}件）`);
+    drop.addEventListener('click', () => {
+      if (!confirm(`残っている ${all.length}件を消しますか？\n（GitHub の履歴には残ります）`)) return;
+      edit(opDrop(stale), `tasks: ${all.length}件を削除（未完了）`);
+      opened.clear();
+      draw();
+    });
+    row.append(move, drop);
+    sec.append(row);
   }
 
   for (const k of stale) {
@@ -1778,7 +1876,6 @@ function groupOf(summary){
 function weekBlocks(w, h0, h1){
   const base = dayNo(w.week);
   const dim = Array.isArray(w.dim) ? w.dim : DIM_DEFAULT;
-  const colors = new Map();
   const days = Array.from({ length: 7 }, () => []);
 
   for (const e of (w.events || [])) {
@@ -1789,7 +1886,6 @@ function weekBlocks(w, h0, h1){
     if (to <= from) continue;
 
     const g = groupOf(e.summary);
-    if (!colors.has(g)) colors.set(g, PALETTE[colors.size % PALETTE.length]);
     const faint = dim.some(k => k && String(e.summary || '').includes(k));
 
     for (let d = 0; d < 7; d++) {
@@ -1798,7 +1894,7 @@ function weekBlocks(w, h0, h1){
       if (b - a < 5) continue;                       // 5分未満の切れ端は出さない
       days[d].push({
         ev: e, top: a - lo, len: b - a, abs: a, dim: faint, name: g,
-        color: e.color || colors.get(g),
+        color: e.color || hue(g),        // 3つの面で共通の表を引く
         head: a === from                             // 続きの断片には時刻を出さない
       });
     }
@@ -1888,6 +1984,9 @@ function renderWkDay(days){
 
   const list = (days || weekBlocks(week, wkWin[0], wkWin[1]))[wkDay]
     .filter(b => !b.dim).sort((a, b) => a.top - b.top);
+  // 週の頭から数えた「いま」。取りこぼしの判定に使う（paintGone と同じ物差し）
+  const at = new Date();
+  const gone = (dayNo(ymd(at)) - base) * 1440 + at.getHours() * 60 + at.getMinutes();
   if (!list.length) { box.append(el('div','wk-empty','この日は空です')); return; }
 
   for (const b of list) {
@@ -1907,6 +2006,18 @@ function renderWkDay(days){
     row.append(card);
 
     if (pin) card.addEventListener('click', () => cycleStatus(b.ev));
+
+    // 終わりの時刻を過ぎたのに印が無い＝取りこぼし。ここから拾い直せる。
+    // 予定そのものはカレンダーのものなので触らず、タスクを1本足すだけ
+    if (pin && !st && gone >= b.abs + b.len) {
+      const pick = el('button','wkli-pick','タスクにする');
+      pick.addEventListener('click', () => {
+        edit(opAdd(b.ev.summary), `tasks: 追加（${b.ev.summary}）`);
+        draw();
+        toast(`「いつでも」に足しました：${b.ev.summary}`);
+      });
+      row.append(pick);
+    }
     box.append(row);
   }
 }
@@ -2219,8 +2330,6 @@ const BD_ROWS = [
   { k:'goal',    label:'Goal',    hint:'どうなったら終わりか' }
 ];
 const BD_SHEET = { k:'detail', label:'Detail', hint:'やり方・手順・覚え書き' };
-// 札の色。どれも明るいので、上に乗る字は明暗どちらでも黒のまま
-const BD_COLORS = ['#8beac9','#ffe142','#d07ae5','#ffb59c','#a8c6ff','#c9e86b'];
 
 let board = null;         // { updated, cards } まだ読んでいなければ null
 let boardSha = null;      // board.json の blob SHA。書き込みに要る
@@ -2309,12 +2418,19 @@ function grow(ta){
 // 一覧のカード1枚。日付と見出しだけを、色の付いた札に載せる
 function bdCard(c, i){
   const node = el('article','bd-card');
-  node.style.setProperty('--c', BD_COLORS[i % BD_COLORS.length]);
+  node.style.setProperty('--c', hue(c.title));      // 案件の色。並び順では決めない
   node.style.zIndex = String(i + 1);            // 後のカードが手前に重なる
   node.dataset.id = c.id || '';
   node.setAttribute('role','button');
   node.append(el('div','bd-when', c.created || ''),
               el('div','bd-name', (c.title || '').trim() || '(無題)'));
+  // 「どうやるか」の裏で、いま何件残っているか。叩けば3日の面へ
+  const n = openFor(c.title);
+  if (n) {
+    const link = el('button','bd-tasks', `残り ${n} 件`);
+    link.addEventListener('click', e => { e.stopPropagation(); setView('days'); });
+    node.append(link);
+  }
   node.addEventListener('click', () => bdShow(i));
   return node;
 }
@@ -2331,7 +2447,7 @@ function bdList(){
 function renderBoard(){
   const stack = document.getElementById('bd-stack');
   stack.textContent = '';
-  document.getElementById('bd-add').hidden = !pin || !board;
+  document.getElementById('bd-new').hidden = !pin || !board;
 
   if (!board) {
     stack.append(el('div', boardErr ? 'err' : 'bd-empty',
@@ -2385,7 +2501,7 @@ function bdFill(i){
   if (!c) return;
   bdAt = i;
   const box = detail();
-  box.style.setProperty('--c', BD_COLORS[i % BD_COLORS.length]);
+  box.style.setProperty('--c', hue(c.title));
 
   const big = document.getElementById('bd-big');
   big.value = c.title || '';
@@ -2939,14 +3055,19 @@ addEventListener('resize', () => { if (view === 'week' && week) fitWeek(); });
 
 document.getElementById('bd-q').addEventListener('input', renderBoard);
 
-document.getElementById('bd-add').addEventListener('click', () => {
+document.getElementById('bd-new').addEventListener('submit', e => {
+  e.preventDefault();
   if (!pin || !board) return;
-  board.cards.push({ id: 'c' + Date.now().toString(36), title: '', created: ymd(new Date()) });
+  const box = document.getElementById('bd-new-text');
+  const title = box.value.trim();
+  if (!title) return;
+  box.value = '';
+  box.blur();                                    // iOS のキーボードを閉じる
+  board.cards.push({ id: 'c' + Date.now().toString(36), title, created: ymd(new Date()) });
   document.getElementById('bd-q').value = '';    // 絞り込みで見えないと困る
   renderBoard();
-  bdShow(board.cards.length - 1);        // 足したらそのまま見出しを打てる
-  document.getElementById('bd-big').focus();
-  touchBoard('board: カードを追加');
+  bdShow(board.cards.length - 1);                // そのまま中身を書き始められる
+  touchBoard(`board: カードを追加（${title}）`);
 });
 
 // 読み直し。未保存のまま取り直すと打った分が消えるので、そのときは触らない
@@ -2989,6 +3110,9 @@ function loadView(){
 loadView();
 loadPin();          // showMode → applyView まで走るので、週なら week.json も読む
 load();
+// ガイドは開く前から読んでおく。案件の色と、タスクからガイドへの結びつけに要る。
+// 読めたら3日の面を描き直して、案件の札に下線を出す
+if (!board) loadBoard().then(() => { if (view !== 'board') draw(); });
 checkVersion();
 </script>
 </body>
