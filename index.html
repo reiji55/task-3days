@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-17-sync">
+<meta name="app-version" content="2026-09-17-lean">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -1465,9 +1465,13 @@ async function fail(res){
   return new Error(msg || 'HTTP ' + res.status);
 }
 
+// 返事が来ないまま黙って待ち続けないよう、時間で切る。
+// 切れれば「失敗」として扱えるので、やり直しに回せる
+const cutoff = () => (AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined);
+
 async function apiRead(){
   const res = await fetch(`${API}?t=${Date.now()}`, {
-    headers: { 'X-Pin': pin }, cache:'no-store'
+    headers: { 'X-Pin': pin }, cache:'no-store', signal: cutoff()
   });
   if (!res.ok) throw await fail(res);
   const json = await res.json();
@@ -1532,13 +1536,26 @@ let saveTimer = null;
 let saving = false;
 let lastMsg = '';
 
-/* タスクは3日の面・週の面・ガイドの内訳の3か所に出る。直したら全部描き直す。
+/* タスクは3日の面・週の面・ガイドの内訳の3か所に出る。直したら全部が古くなるが、
+   見えていない面をその場で組み直しても誰も見ていない。印だけ付けておいて、
+   その面に移るときに追いつかせる（viewState から catchUp が呼ばれる）。
    ガイドを外すと、tasks.txt と board.json のどちらが先に届くかで
-   「内訳が出ない」「案件の札に下線が出ない」のどちらかが起きる */
+   「内訳が出ない」「案件の札に下線が出ない」のどちらかが起きるので、外さない */
+const behind = new Set();
+
+function repaint(which){
+  if (which === 'week') { if (week) paintTasks(); }
+  else if (board) renderBoard();
+}
+// 見ている面なら今すぐ、そうでなければ借りにしておく
+const touch = which => { if (view === which) repaint(which); else behind.add(which); };
+// 面を移ってきたら、借りを返す
+const catchUp = () => { if (behind.delete(view)) repaint(view); };
+
 const draw = () => {
   render(parse(text).days);
-  paintTasks();
-  if (board) renderBoard();
+  touch('week');
+  touch('board');
 };
 const dirty = () => pending.length > 0 || saving;
 
@@ -3393,6 +3410,7 @@ let sliding = false;
 
 // 見た目以外の切り替え。どの画面にいるかで変わるものをまとめて直す
 function viewState(){
+  catchUp();                     // 見えていない間に古くなっていたら、ここで追いつかせる
   document.getElementById('quick').hidden = view !== 'days' || !pin;
   document.getElementById('h1').textContent =
     view === 'week' ? '週の時間割' : view === 'board' ? 'Tasks guide' : '3日間タスク';
@@ -3692,16 +3710,26 @@ function setView(next){
 
 /* ---------- 読み込み ---------- */
 
+const readOnce = async () => {
+  if (pin) return apiRead();
+  const res = await fetch('tasks.txt?t=' + Date.now(), { cache:'no-store', signal: cutoff() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.text();
+};
+
+/* 1度こけたら、少し待って1回だけやり直す。
+   書き込みと同じで、取りに行くのも寝ていたサーバーの1本目が落ちることがある。
+   ここで拾わないと、画面が「読み込めませんでした」で止まり、
+   開き直すまで戻らない（それが「たまに失敗する」の中身） */
 async function load(){
   if (dirty()) return flush();          // 出していない分があるなら、上書きせず先に出す
   try {
     let src;
-    if (pin) {
-      src = await apiRead();
-    } else {
-      const res = await fetch('tasks.txt?t=' + Date.now(), { cache:'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      src = await res.text();
+    try {
+      src = await readOnce();
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 700));
+      src = await readOnce();
     }
     text = src;
     saved = src;
