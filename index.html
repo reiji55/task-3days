@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-15-tap">
+<meta name="app-version" content="2026-09-16-lay">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -241,14 +241,19 @@ button.box:active{transform:scale(.9)}
   background:rgba(0,0,0,.14);color:#14130f;
 }
 .tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
+/* 時刻は叩いて回す。叩けることを、案件の札と同じ点線の下線で示す */
+.can-pick{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px;text-decoration-color:var(--ink-3)}
+.can-pick:active{opacity:.55}
+.tl-at.can-pick{text-decoration-color:var(--ink-3)}
 .task.done .tag{opacity:.5}
 .more{grid-column:2 / -1;display:none;gap:6px;margin-top:8px}
 .task.open .more{display:flex}
-.memo-add{
+.memo-add,.time-add{
   appearance:none;border:1px dashed var(--line);background:transparent;color:var(--ink-3);
   font:inherit;font-size:11px;padding:1px 8px;border-radius:999px;cursor:pointer;
 }
-.memo-add:active{opacity:.6}
+.memo-add:active,.time-add:active{opacity:.6}
 
 .memo{
   grid-column:2 / -1; margin-top:8px; padding:7px 10px;
@@ -554,6 +559,30 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .wk-line{position:absolute;top:23px;bottom:0;width:0;z-index:2;pointer-events:none;
   border-left:1.5px dashed color-mix(in srgb, var(--warn) 60%, transparent)}
 
+/* ---- 時間割に重ねるタスク ----
+   予定ではないので、帯ではなく小さい丸い札で、行の下のふちに乗せる。
+   この幅（1時間で19px）に名前は入らないので、ここは「いつ・ぶつかっているか」
+   だけを見せる場所と割り切って、名前は下の一覧で読ませる。
+   過ぎたところを塗る帯（--veil）より上に置く。自分の持ち物は、
+   時間が過ぎても沈めない */
+.tk{
+  position:absolute;bottom:3px;height:20px;min-width:26px;z-index:5;box-sizing:border-box;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:999px;background:var(--panel);border:2px solid var(--c);
+  box-shadow:0 2px 5px -1px rgba(0,0,0,.45);cursor:pointer;
+}
+/* 見えている札は小さいが、指はその外側まで受ける */
+.tk::before{content:"";position:absolute;inset:-9px -7px}
+.tk:active{transform:scale(.93)}
+.tk-star{position:relative;z-index:1;font-size:11px;line-height:1;font-weight:700;color:var(--c)}
+/* 済んだタスク。時間割の枠と同じ斜線を、同じ向きで掛ける */
+.tk.done{opacity:.8}
+.tk.done::after{
+  content:"";position:absolute;inset:0;border-radius:999px;pointer-events:none;
+  background:repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--c) 72%, transparent) 0 2.5px, transparent 2.5px 7px);
+}
+
 /* ---- 選んだ日の中身。ここで印を付ける ---- */
 /* 取りこぼしを拾い直す。表で光っているものと同じ色で結びつける */
 .wkli-pick{
@@ -582,6 +611,17 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .wkli.done .wkli-card{background:color-mix(in srgb, var(--ok) 7%, var(--bg))}
 .wkli.miss .wkli-card{background:color-mix(in srgb, var(--warn) 6%, var(--bg))}
 .wkli.done .wkli-nm,.wkli.miss .wkli-nm{color:var(--ink-2)}
+/* 予定の下に続けて出すタスク。予定より一段小さくして、上下の関係を出す */
+.wkli.is-task .wkli-card{min-height:44px;gap:9px;padding:8px 12px;cursor:pointer}
+.wkli.is-task .wkli-nm{font-size:13.5px;font-weight:500}
+.wkli.is-task .wkli-at{padding-top:12px}
+.tk-star.in-li{margin-right:3px}
+.wkli.is-task.done .wkli-nm{
+  color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
+/* 予定の⭕️の緑は持ち込まない。タスクの「済」は取り消し線だけで足りる */
+.wkli.is-task.done .wkli-card{background:var(--bg)}
+/* 何とぶつかっているか。ここを読ませたくてこの節がある */
+.wkli-hit{font-size:11px;color:var(--warn);margin-top:2px}
 /* 印は点線の四角にそのまま収まる。付くときだけ、すっと出る */
 .stamp{
   flex:none;width:46px;height:46px;border-radius:13px;display:grid;place-items:center;
@@ -745,6 +785,70 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
 }
 .bd-del:active{color:var(--warn);border-color:var(--warn)}
 
+/* ---- 時刻を回して決める ----
+   下から出る面に、かちかち吸い付く輪を4つ並べる。真ん中の帯に
+   入っているものが選ばれている。打ち込むより、回す方が片手で早い */
+#tpick{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end}
+#tpick[hidden]{display:none}
+.tp-veil{position:absolute;inset:0;background:rgba(0,0,0,.34)}
+.tp-sheet{
+  position:relative;width:100%;background:var(--panel);color:var(--ink);
+  border-radius:20px 20px 0 0;border-top:1px solid var(--line);
+  padding:14px 16px calc(16px + env(safe-area-inset-bottom));
+  box-shadow:0 -10px 40px -20px rgba(0,0,0,.4);
+  animation:tp-up .26s cubic-bezier(.25,.9,.35,1);
+}
+@keyframes tp-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){.tp-sheet{animation:none}}
+.tp-grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
+.tp-who{display:flex;align-items:center;gap:8px}
+.tp-who i{width:3px;height:17px;border-radius:2px;background:var(--c, var(--ink-3));flex:none}
+.tp-nm{font-size:16px;font-weight:650;letter-spacing:-.01em;word-break:break-word}
+.tp-cap{font-size:11.5px;color:var(--ink-3);margin:2px 0 10px 11px}
+
+.tp-dial{position:relative;display:flex;justify-content:center;align-items:stretch;
+  gap:2px;height:170px;margin:0 -2px}
+/* 選ばれているものが乗る帯。輪より下に敷く */
+.tp-dial::before{
+  content:"";position:absolute;left:4px;right:4px;top:50%;height:36px;z-index:0;
+  transform:translateY(-50%);border-radius:10px;background:var(--line-soft);pointer-events:none;
+}
+.tp-whl{
+  position:relative;z-index:1;flex:0 0 58px;overflow-y:scroll;
+  scroll-snap-type:y mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  padding:67px 0;                                   /* (170 - 36) / 2 */
+  mask-image:linear-gradient(#0000 0,#000 28%,#000 72%,#0000 100%);
+}
+.tp-whl::-webkit-scrollbar{display:none}
+.tp-whl i{
+  display:flex;align-items:center;justify-content:center;height:36px;
+  scroll-snap-align:center;font-style:normal;font-size:19px;font-weight:600;
+  font-variant-numeric:tabular-nums;color:var(--ink-3);
+}
+.tp-whl i.on{color:var(--ink);font-weight:700}
+.tp-sep,.tp-to{position:relative;z-index:1;display:flex;align-items:center;
+  justify-content:center;color:var(--ink-3);font-weight:700}
+.tp-sep{flex:0 0 12px;font-size:19px}
+.tp-to{flex:0 0 28px;font-size:13px;color:var(--ink-2)}
+
+.tp-row{display:flex;gap:8px;margin-top:14px;align-items:center}
+.tp-chip{
+  appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink-2);
+  border-radius:999px;font:inherit;font-size:12.5px;font-weight:600;padding:6px 13px;cursor:pointer;
+}
+.tp-chip:active{opacity:.6}
+.tp-len{margin-left:auto;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.tp-len.bad{color:var(--warn)}
+.tp-go{
+  appearance:none;border:0;border-radius:12px;background:var(--accel);color:var(--on-fill);
+  font:inherit;font-size:15px;font-weight:700;padding:13px;width:100%;margin-top:12px;cursor:pointer;
+}
+.tp-go:disabled{background:var(--line);color:var(--ink-3);cursor:default}
+.tp-ng{
+  appearance:none;border:0;background:transparent;color:var(--ink-3);
+  font:inherit;font-size:13px;padding:10px;width:100%;cursor:pointer;
+}
+
 /* ---- 印刷（A4横1枚） ----
    紙は画面の写しではない。幅が 264mm あるので、画面では諦めたものを全部戻す。
    ・目盛りは1時間おき。方眼もそれに合わせる（画面は2時間おき）
@@ -836,6 +940,9 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   .ev.late .nm{color:#000;font-weight:400}
 
   .wk-now,.wk-line,.wk-gone{display:none !important}
+  /* タスクは紙には出さない。この幅では名前が入らず印しか刷れないうえ、
+     中身は毎日動くので、刷った時点で古くなる */
+  .tk,.wkli.is-task,.wk-cap.tasks{display:none !important}
 }
 @page{size:A4 landscape;margin:8mm}
 </style>
@@ -961,6 +1068,31 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
     <div class="bd-fields" id="bd-fields"></div>
   </div>
 </section>
+
+<div id="tpick" hidden role="dialog" aria-modal="true" aria-label="時間帯を決める">
+  <div class="tp-veil" id="tp-veil"></div>
+  <div class="tp-sheet">
+    <div class="tp-grab" aria-hidden="true"></div>
+    <div class="tp-who"><i aria-hidden="true"></i><div class="tp-nm" id="tp-nm"></div></div>
+    <p class="tp-cap" id="tp-cap"></p>
+    <div class="tp-dial">
+      <div class="tp-whl" id="tp-h1" aria-label="始まりの時"></div>
+      <div class="tp-sep" aria-hidden="true">:</div>
+      <div class="tp-whl" id="tp-m1" aria-label="始まりの分"></div>
+      <div class="tp-to" aria-hidden="true">〜</div>
+      <div class="tp-whl" id="tp-h2" aria-label="終わりの時"></div>
+      <div class="tp-sep" aria-hidden="true">:</div>
+      <div class="tp-whl" id="tp-m2" aria-label="終わりの分"></div>
+    </div>
+    <div class="tp-row">
+      <button class="tp-chip" id="tp-allday">終日にする</button>
+      <button class="tp-chip" id="tp-clear">時間を消す</button>
+      <div class="tp-len" id="tp-len"></div>
+    </div>
+    <button class="tp-go" id="tp-go"></button>
+    <button class="tp-ng" id="tp-ng">やめる</button>
+  </div>
+</div>
 
 <script>
 // 書き込みは Vercel 側の API を通す。GitHub のトークンはあちらにあり、
@@ -1182,6 +1314,29 @@ const opMust = (id, on) => src => {
 };
 
 // memo: / next: の行を丸ごと差し替える。1行につきタグ1本、で往復できる
+/* タスク行を組み直す。「- [ ] 時間帯 | 型 | 案件 | 名前」で、後ろが空なら
+   その欄ごと畳む（mcp/lib/tasks.js の formatTask と同じ決まり）。
+   名前に | が入るときだけは、読み違えないよう4欄そろえる */
+function taskRow(t, bullet = '-'){
+  const lead = [t.time, t.type, t.proj].map(v => String(v || '').trim());
+  let last = -1;
+  lead.forEach((v, i) => { if (v) last = i; });
+  if (t.title.includes('|')) last = 2;
+  const head = `${bullet} [${t.done ? 'x' : ' '}] `;
+  return last < 0 ? head + t.title
+    : head + [...lead.slice(0, last + 1).map(v => v || '-'), t.title].join(' | ');
+}
+
+// 時間帯だけを差し替える。メモ・引き継ぎ・MUST の行には触らない
+const opTime = (id, time) => src => {
+  const at = find(src, id);
+  if (!at) return src;
+  const { lines, task } = at;
+  const m = lines[task.at].match(/^(\s*)([-*])/) || ['', '', '-'];
+  lines[task.at] = m[1] + taskRow({ ...task, time: String(time || '').trim() }, m[2]);
+  return lines.join('\n');
+};
+
 const opTagged = (id, tag, value) => src => {
   const at = find(src, id);
   if (!at) return src;
@@ -1308,7 +1463,8 @@ let saveTimer = null;
 let saving = false;
 let lastMsg = '';
 
-const draw = () => render(parse(text).days);
+// タスクは3日の面と週の面の両方に出るので、直したら両方を描き直す
+const draw = () => { render(parse(text).days); paintTasks(); };
 const dirty = () => pending.length > 0 || saving;
 
 function schedule(ms){
@@ -1492,6 +1648,96 @@ function openEditor(card, task, kind){
   ok.addEventListener('click', () => close(true));
 }
 
+/* ---------- 時間帯を回して決める ----------
+   下から出る面に、かちかち吸い付く輪を4つ。打ち込むより片手で早い。
+   終わりが始まりより後にならないときは、勝手に動かさず決定を止めるだけにする。
+   指で押さえている輪が勝手に動くと、何が起きたのか分からなくなるため。 */
+const openTime = (() => {
+  const STEP = 5, ITEM = 36;                        // 分の刻み／輪1段の高さ
+  const HH = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const MM = Array.from({ length: 60 / STEP }, (_, i) => String(i * STEP).padStart(2, '0'));
+  const IDS = ['tp-h1', 'tp-m1', 'tp-h2', 'tp-m2'];
+  const at = id => document.getElementById(id);
+  let task = null;
+
+  // 輪の中身を作り直し、選ばれている段まで送る
+  function load(id, list, k){
+    const w = at(id);
+    w.textContent = '';
+    list.forEach(v => w.append(el('i', null, v)));
+    w.scrollTop = k * ITEM;
+    mark(w);
+  }
+  const pick = w => Math.max(0, Math.min(w.children.length - 1, Math.round(w.scrollTop / ITEM)));
+  function mark(w){
+    const k = pick(w);
+    [...w.children].forEach((n, i) => n.classList.toggle('on', i === k));
+  }
+  const now = () => ({
+    from: pick(at('tp-h1')) * 60 + pick(at('tp-m1')) * STEP,
+    to:   pick(at('tp-h2')) * 60 + pick(at('tp-m2')) * STEP
+  });
+
+  function redraw(){
+    IDS.forEach(id => mark(at(id)));
+    const { from, to } = now();
+    const len = at('tp-len'), go = at('tp-go');
+    if (to <= from) {
+      len.textContent = '終わりが始まりより後になっていません';
+      len.classList.add('bad');
+      go.disabled = true;
+      go.textContent = '決められません';
+      return;
+    }
+    const m = to - from;
+    len.textContent = (m >= 60 ? Math.floor(m / 60) + '時間' : '') + (m % 60 ? (m % 60) + '分' : '');
+    len.classList.remove('bad');
+    go.disabled = false;
+    go.textContent = `${hhmm(from)} 〜 ${hhmm(to)} にする`;
+  }
+
+  const shut = () => { at('tpick').hidden = true; task = null; };
+  function put(time){
+    if (!task) return;
+    const t = task;
+    shut();
+    edit(opTime(t.id, time),
+      `tasks: 時間帯を${String(time).trim() ? ` ${time} に` : '削除'}（${t.title}）`);
+    opened.clear();                                 // 並びが変わるので開き直す
+    draw();
+  }
+
+  IDS.forEach(id => at(id).addEventListener('scroll', redraw, { passive: true }));
+  at('tp-ng').addEventListener('click', shut);
+  at('tp-veil').addEventListener('click', shut);
+  at('tp-allday').addEventListener('click', () => put('終日'));
+  at('tp-clear').addEventListener('click', () => put(''));
+  at('tp-go').addEventListener('click', () => {
+    const { from, to } = now();
+    if (to > from) put(`${hhmm(from)}-${hhmm(to)}`);
+  });
+
+  return t => {
+    if (!pin) return;
+    task = t;
+    const c = clock(t.time);
+    // 時刻が無い（終日・いつでも）ものは、9:00〜10:00 から回し始める
+    const from = c ? c.from : 9 * 60;
+    const to = c && c.to != null ? c.to : from + 60;
+    const box = at('tpick');
+    box.style.setProperty('--c', hue(t.proj || t.title));
+    at('tp-nm').textContent = t.title;
+    const key = t.id.slice(0, t.id.lastIndexOf('#'));
+    at('tp-cap').textContent = [t.proj, label(key)].filter(Boolean).join(' ・ ');
+    box.hidden = false;
+    load('tp-h1', HH, Math.floor(from / 60));
+    load('tp-m1', MM, Math.round((from % 60) / STEP) % MM.length);
+    load('tp-h2', HH, Math.floor(to / 60) % 24);
+    load('tp-m2', MM, Math.round((to % 60) / STEP) % MM.length);
+    redraw();
+  };
+})();
+
 /* ---------- 3日分の表示 ----------
    日付でタブを分け、選んだ日だけを出す。今日だけ「今日」を併記する。
    1日の中は 終日 → タイムライン → いつでも の順。
@@ -1596,6 +1842,17 @@ const hue = (() => {
   };
 })();
 
+/* 時刻の札。編集できるなら叩いて回せる。案件の札と同じ点線の下線で示す。
+   「終日」もここを通るので、終日のタスクも叩いて時刻を入れられる */
+function timeTag(cls, t, txt){
+  const tag = el('span', cls + (pin ? ' can-pick' : ''), txt == null ? t.time : txt);
+  if (!pin) return tag;
+  tag.setAttribute('role','button');
+  tag.setAttribute('aria-label', `時間帯を決める: ${t.title}`);
+  tag.addEventListener('click', e => { e.stopPropagation(); openTime(t); });
+  return tag;
+}
+
 /* ---- タスク1枚 ---- */
 
 function renderCard(t, lead, fold){
@@ -1643,7 +1900,7 @@ function renderCard(t, lead, fold){
   }
 
   const meta = el('div','meta');
-  if (!lead && t.time) meta.append(el('span','tag t-time', t.time));
+  if (!lead && t.time) meta.append(timeTag('tag t-time', t));
   if (t.type) {
     const k = TYPE_MAP[t.type] || '';
     meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
@@ -1662,9 +1919,14 @@ function renderCard(t, lead, fold){
   }
 
   // 空の欄の追加ボタンは、カードを叩いたときだけ出す。常に並ぶと詰まって見える
-  const canAdd = pin && (!t.memo || !t.next);
+  const canAdd = pin && (!t.memo || !t.next || !t.time);
   if (canAdd) {
     const more = el('div','more');
+    if (!t.time) {
+      const add = el('button','time-add','＋時間');
+      add.addEventListener('click', () => openTime(t));
+      more.append(add);
+    }
     if (!t.memo) {
       const add = el('button','memo-add','＋メモ');
       add.addEventListener('click', () => openEditor(card, t, 'memo'));
@@ -1771,7 +2033,7 @@ function renderOne(key, list, anytime, todayKey){
       if (at.to != null) lead.append(el('span','lead-to', '〜' + hhmm(at.to)));
 
       const row = el('div','tl-row');
-      row.append(el('div','tl-at', hhmm(at.from)));
+      row.append(timeTag('tl-at', t, hhmm(at.from)));   // 左の時刻を叩いて回す
       const { wrap, card } = renderCard(t, lead.childNodes.length ? lead : null);
       rightAct(wrap, 'must', 'MUST へ', () => toggleMust(t.id, true, t.title));
       card.style.setProperty('--c', hue(t.proj || t.title));
@@ -2001,6 +2263,31 @@ function weekBlocks(w, h0, h1){
   return days;
 }
 
+/* その週に入る、時刻の決まったタスクを日ごとに分ける。
+   時間割の上に重ねて「予定とぶつかっていないか」を見るためのもので、
+   week.json には何も書かない。終日・いつでも・時刻の読めないものは
+   縦軸に置き場所が無いので出さない。窓（h0〜h1）の外に出る分も出さない。
+   終わりの無いもの（「10:00」だけ）は1時間ぶんとして置く */
+function weekTasks(w, h0, h1){
+  const base = dayNo(w.week);
+  const days = Array.from({ length: 7 }, () => []);
+  for (const [key, list] of parse(text).days) {
+    if (key === ANYTIME) continue;
+    const d = dayNo(key) - base;
+    if (d < 0 || d > 6) continue;
+    for (const t of list) {
+      const c = clock(t.time);
+      if (!c) continue;
+      const to0 = c.to == null ? c.from + 60 : c.to;
+      const from = Math.max(c.from, h0 * 60), to = Math.min(to0, h1 * 60);
+      if (to - from < 5) continue;
+      days[d].push({ task: t, top: from - h0 * 60, len: to - from, at: c.from, end: to0 });
+    }
+  }
+  days.forEach(l => l.sort((a, b) => a.top - b.top));
+  return days;
+}
+
 // 予定のある時間帯に窓を寄せる。1日ぶんが画面の幅に収まるので、
 // 誰も使っていない深夜を捨てるとその分だけ字が入る
 function weekWindow(w){
@@ -2065,8 +2352,43 @@ const STAMP_NG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
   '<path d="M9.5 9.5l13 13M22.5 9.5l-13 13"/></svg>';
 
 // 選んだ日の予定を縦に並べる。印はここで付ける。
-// days は表を組んだときのものを使い回す（無ければ自分で切り分ける）
-function renderWkDay(days){
+// 時間割に重ねる札を1つ。名前は入らないので、MUST の★と済みの斜線だけを持つ
+function taskPill(b, d, pct){
+  const t = b.task;
+  const n = el('div','tk' + (t.done ? ' done' : ''));
+  n.style.setProperty('--c', hue(t.proj || t.title));
+  n.style.left = pct(b.top);
+  n.style.width = pct(b.len);
+  if (t.must) n.append(el('span','tk-star','★'));
+  n.setAttribute('role','button');
+  n.setAttribute('aria-label',
+    `${t.must ? 'MUST ' : ''}${hhmm(b.at)} ${t.title}${t.done ? '（済）' : ''}`);
+  n.addEventListener('click', () => { wkDay = d; renderWeek(); });
+  return n;
+}
+
+/* タスクを直したら、時間割に重ねている分だけ置き直す。
+   表そのもの（帯・目盛り・行の高さ）は動かないので作り直さない */
+function paintTasks(){
+  const grid = document.getElementById('wk-grid');
+  if (!week || !grid || !grid.querySelector('.wk-trk')) return;
+  const [h0, h1] = wkWin;
+  const span = (h1 - h0) * 60;
+  const pct = n => (n / span * 100).toFixed(3) + '%';
+  const mine = weekTasks(week, h0, h1);
+
+  grid.querySelectorAll('.wk-row').forEach(row => {
+    const trk = row.querySelector('.wk-trk');
+    if (!trk) return;
+    trk.querySelectorAll('.tk').forEach(n => n.remove());
+    const d = Number(row.dataset.d);
+    for (const b of mine[d]) trk.append(taskPill(b, d, pct));
+  });
+  renderWkDay(null, mine);
+}
+
+// days / mine は表を組んだときのものを使い回す（無ければ自分で切り分ける）
+function renderWkDay(days, mine){
   const box = document.getElementById('wk-day');
   box.textContent = '';
   if (!week) return;
@@ -2080,12 +2402,15 @@ function renderWkDay(days){
     : '　印を付けるには編集を有効にしてください'));
   box.append(cap);
 
-  const list = (days || weekBlocks(week, wkWin[0], wkWin[1]))[wkDay]
-    .filter(b => !b.dim).sort((a, b) => a.top - b.top);
+  const all = (days || weekBlocks(week, wkWin[0], wkWin[1]))[wkDay];
+  const list = all.filter(b => !b.dim).sort((a, b) => a.top - b.top);
+  // 表で重ねたタスクは、名前の読める形で予定の下に出す。
+  // 表は幅が足りず印しか置けないので、何なのかを読むのはこちら
+  const tasks = () => wkDayTasks(box, (mine || weekTasks(week, wkWin[0], wkWin[1]))[wkDay], all);
   // 週の頭から数えた「いま」。取りこぼしの判定に使う（paintGone と同じ物差し）
   const at = new Date();
   const gone = (dayNo(ymd(at)) - base) * 1440 + at.getHours() * 60 + at.getMinutes();
-  if (!list.length) { box.append(el('div','wk-empty','この日は空です')); return; }
+  if (!list.length) { box.append(el('div','wk-empty','この日は空です')); tasks(); return; }
 
   for (const b of list) {
     const st = b.ev.status || '';
@@ -2116,6 +2441,56 @@ function renderWkDay(days){
       });
       row.append(pick);
     }
+    box.append(row);
+  }
+  tasks();
+}
+
+/* その日のタスクを、予定の下に続けて出す。
+   ここが「何なのか」を読む場所。ぶつかっている予定があれば名指しで言う
+   （薄く出している睡眠も数える。寝ている時間に置いてしまうのが元々の困りごと） */
+function wkDayTasks(box, mine, blocks){
+  if (!mine || !mine.length) return;
+
+  const cap = el('div','wk-cap tasks');
+  cap.append(document.createTextNode('この日のタスク'));
+  cap.append(el('span', null, '　叩くと3日の面へ'));
+  box.append(cap);
+
+  for (const b of mine) {
+    const t = b.task;
+    const row = el('div','wkli is-task' + (t.done ? ' done' : ''));
+    row.style.setProperty('--c', hue(t.proj || t.title));
+    row.append(el('div','wkli-at', hhmm(b.at)));
+
+    const nm = el('div','wkli-nm');
+    if (t.must) nm.append(el('span','tk-star in-li','★'));
+    nm.append(document.createTextNode(t.title));
+
+    const txt = el('div','wkli-txt');
+    txt.append(nm, el('div','wkli-tm',
+      '〜' + hhmm(b.end) + (t.proj ? '　' + t.proj : '')));
+
+    // 重なっている枠。済んだタスクは、もうぶつかりようがないので言わない
+    if (!t.done) {
+      const hit = [...new Set(blocks
+        .filter(k => b.top < k.top + k.len && k.top < b.top + b.len)
+        .map(k => groupOf(k.ev.summary)))];
+      if (hit.length) txt.append(el('div','wkli-hit', hit.join('・') + ' と重なっています'));
+    }
+
+    // 3日の面へ。窓から外れた日は「未完了」のタブが受け持つ
+    const key = t.id.slice(0, t.id.lastIndexOf('#'));
+    const card = el('div','wkli-card');
+    card.append(txt);
+    card.addEventListener('click', () => {
+      dayAt = window3().win.includes(key) ? key : '!';
+      opened.clear();
+      setView('days');
+      draw();
+      window.scrollTo(0, 0);
+    });
+    row.append(card);
     box.append(row);
   }
 }
@@ -2233,6 +2608,7 @@ function renderWeek(){
 
   const dow = ['月','火','水','木','金','土','日'];
   const days = weekBlocks(w, h0, h1);
+  const mine = weekTasks(w, h0, h1);          // 重ねるタスク。予定とは別に持つ
 
   for (let d = 0; d < 7; d++) {
     const row = el('div','wk-row' + (d === today ? ' today' : '') + (d === wkDay ? ' on' : ''));
@@ -2261,6 +2637,7 @@ function renderWeek(){
       trk.append(n);
     }
     trk.append(el('div','wk-gone'));
+    for (const b of mine[d]) trk.append(taskPill(b, d, pct));   // 予定の上に重ねる
     if (d === today && nowMin >= 0 && nowMin <= span) {
       const m = el('div','wk-now');
       m.style.left = pct(nowMin);
@@ -2292,7 +2669,7 @@ function renderWeek(){
 
   stampClock();
 
-  renderWkDay(days);        // 切り分けたものを使い回す。7日ぶんを組み直さない
+  renderWkDay(days, mine);  // 切り分けたものを使い回す。7日ぶんを組み直さない
   fitWeek();                // 中で paintMarks まで済ませる
   paintGone();
 }
