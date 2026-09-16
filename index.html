@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-16-lay">
+<meta name="app-version" content="2026-09-16-bump">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -55,9 +55,18 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+/* 時刻だけ別の書体にする。本文の中に数字が埋もれると、
+   叩ける場所（＝時刻）が見つけにくい。文章の書体はそのまま */
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  --tf:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN",var(--sans);
+}
+.clock,.tl-at,.tag.t-time,.lead-to,.tl-now span,.wkli-at,.wkli-tm,.wk-tick,
+.tp-whl i,.tp-go,.tp-len,.tb-now{font-family:var(--tf);letter-spacing:.01em}
+
 body{
   background:var(--bg); color:var(--ink);
-  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  font-family:var(--sans);
   font-size:15px; line-height:1.6;
   padding:0 0 env(safe-area-inset-bottom);
   -webkit-font-smoothing:antialiased;
@@ -122,7 +131,7 @@ h1:empty{flex:1}                 /* ボードは面の中に見出しがある�
 .flat-row{margin-bottom:9px}
 .flat-row > .task-wrap{grid-column:2}
 .tl-at{
-  font-size:12px;color:var(--ink-3);text-align:right;padding-top:10px;
+  font-size:13px;font-weight:700;color:var(--ink-2);text-align:right;padding-top:10px;
   font-variant-numeric:tabular-nums;
 }
 .tl-now{display:grid;grid-template-columns:46px 1fr;gap:0 10px;align-items:center;margin:4px 0 13px}
@@ -240,7 +249,7 @@ button.box:active{transform:scale(.9)}
   font-size:11.5px;font-weight:650;padding:3px 11px;
   background:rgba(0,0,0,.14);color:#14130f;
 }
-.tag.t-time{color:var(--ink-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:500}
+.tag.t-time{color:var(--ink);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:650}
 /* 時刻は叩いて回す。叩けることを、案件の札と同じ点線の下線で示す */
 .can-pick{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
   text-underline-offset:2px;text-decoration-color:var(--ink-3)}
@@ -575,6 +584,15 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .tk::before{content:"";position:absolute;inset:-9px -7px}
 .tk:active{transform:scale(.93)}
 .tk-star{position:relative;z-index:1;font-size:11px;line-height:1;font-weight:700;color:var(--c)}
+/* 終わりの時刻を過ぎたのに、チェックを付けていないもの。
+   枠（.ev.late）と同じ色で縁取る。ただし明滅はさせない——
+   札は小さく数も多いので、点いたり消えたりすると表がうるさくなる */
+.tk.late{
+  --g:#ff5ca8;z-index:6;
+  border-color:var(--g);                 /* --c は札ごとに直に入っているので別の名前で持つ */
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--g) 60%, transparent),
+             0 0 9px 1px color-mix(in srgb, var(--g) 34%, transparent);
+}
 /* 済んだタスク。時間割の枠と同じ斜線を、同じ向きで掛ける */
 .tk.done{opacity:.8}
 .tk.done::after{
@@ -797,7 +815,11 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   padding:14px 16px calc(16px + env(safe-area-inset-bottom));
   box-shadow:0 -10px 40px -20px rgba(0,0,0,.4);
   animation:tp-up .26s cubic-bezier(.25,.9,.35,1);
+  transition:transform .24s cubic-bezier(.25,.8,.35,1);
 }
+/* 指について動いている間。出のアニメは切らない——切ると、指を離して
+   drag を外した拍子に animation-name が戻り、面がもう一度下から出てしまう */
+.tp-sheet.drag{transition:none}
 @keyframes tp-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @media (prefers-reduced-motion:reduce){.tp-sheet{animation:none}}
 .tp-grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
@@ -848,6 +870,27 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
   appearance:none;border:0;background:transparent;color:var(--ink-3);
   font:inherit;font-size:13px;padding:10px;width:100%;cursor:pointer;
 }
+
+/* ---- 時刻を長押しして、1時間ずつずらす ----
+   指を離さないまま上下に振ると、始まりと終わりが一緒に動く（長さは変わらない）。
+   画面の真ん中に出す。札の横に出すと、押さえている指で隠れる */
+#tbump{position:fixed;inset:0;z-index:70;pointer-events:none;display:grid;place-items:center}
+#tbump[hidden]{display:none}
+.tb-card{
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);
+  border-radius:18px;padding:12px 26px 11px;text-align:center;
+  box-shadow:0 14px 46px -14px rgba(0,0,0,.55);
+  animation:tb-in .13s ease-out;
+}
+@keyframes tb-in{from{transform:scale(.88);opacity:0}to{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.tb-card{animation:none}}
+.tb-arrow{font-size:10px;line-height:1;color:var(--ink-3)}
+.tb-now{
+  font-size:27px;font-weight:700;line-height:1.25;white-space:nowrap;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+}
+.tb-diff{font-size:12.5px;font-weight:700;color:var(--accel);height:17px}
+.tb-hint{font-size:10.5px;color:var(--ink-3);margin-top:5px}
 
 /* ---- 印刷（A4横1枚） ----
    紙は画面の写しではない。幅が 264mm あるので、画面では諦めたものを全部戻す。
@@ -1091,6 +1134,16 @@ textarea.bd-v::placeholder{color:var(--ink-3)}
     </div>
     <button class="tp-go" id="tp-go"></button>
     <button class="tp-ng" id="tp-ng">やめる</button>
+  </div>
+</div>
+
+<div id="tbump" hidden aria-hidden="true">
+  <div class="tb-card">
+    <div class="tb-arrow">▲</div>
+    <div class="tb-now" id="tb-now"></div>
+    <div class="tb-diff" id="tb-diff"></div>
+    <div class="tb-arrow">▼</div>
+    <div class="tb-hint">指を上下で 1時間ずつ</div>
   </div>
 </div>
 
@@ -1657,8 +1710,10 @@ const openTime = (() => {
   const HH = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
   const MM = Array.from({ length: 60 / STEP }, (_, i) => String(i * STEP).padStart(2, '0'));
   const IDS = ['tp-h1', 'tp-m1', 'tp-h2', 'tp-m2'];
+  const SIDE = { 'tp-h1':'from', 'tp-m1':'from', 'tp-h2':'to', 'tp-m2':'to' };
+  const MAXT = 23 * 60 + 55;                        // 輪で選べるいちばん後ろ
   const at = id => document.getElementById(id);
-  let task = null;
+  let task = null, dur = 60;                        // 直前の長さ。追い越したときに保つ
 
   // 輪の中身を作り直し、選ばれている段まで送る
   function load(id, list, k){
@@ -1677,23 +1732,35 @@ const openTime = (() => {
     from: pick(at('tp-h1')) * 60 + pick(at('tp-m1')) * STEP,
     to:   pick(at('tp-h2')) * 60 + pick(at('tp-m2')) * STEP
   });
+  // 輪を送る。ここで起きるスクロールも下の handler に返ってくるが、
+  // そのときは既に筋の通った並びなので fix は何もせずに抜ける
+  function set(hId, mId, min){
+    at(hId).scrollTop = Math.floor(min / 60) * ITEM;
+    at(mId).scrollTop = Math.round((min % 60) / STEP) * ITEM;
+  }
+
+  /* 終わりが始まりを追い越したら、触っていない方を動かして長さを保つ。
+     触っている輪が指の下で動くと何が起きたか分からないので、動かすのは逆側 */
+  function fix(side){
+    let { from, to } = now();
+    if (to > from) { dur = to - from; return; }        // 筋が通っている。長さを覚えておく
+    if (side === 'from') to = Math.min(MAXT, from + dur);
+    else                 from = Math.max(0, to - dur);
+    if (to <= from) {                                  // 端に着いて長さが取れない
+      if (side === 'from') from = Math.max(0, to - STEP);
+      else                 to = Math.min(MAXT, from + STEP);
+    }
+    set('tp-h1', 'tp-m1', from);
+    set('tp-h2', 'tp-m2', to);
+  }
 
   function redraw(){
     IDS.forEach(id => mark(at(id)));
     const { from, to } = now();
-    const len = at('tp-len'), go = at('tp-go');
-    if (to <= from) {
-      len.textContent = '終わりが始まりより後になっていません';
-      len.classList.add('bad');
-      go.disabled = true;
-      go.textContent = '決められません';
-      return;
-    }
     const m = to - from;
-    len.textContent = (m >= 60 ? Math.floor(m / 60) + '時間' : '') + (m % 60 ? (m % 60) + '分' : '');
-    len.classList.remove('bad');
-    go.disabled = false;
-    go.textContent = `${hhmm(from)} 〜 ${hhmm(to)} にする`;
+    at('tp-len').textContent = m <= 0 ? ''
+      : (m >= 60 ? Math.floor(m / 60) + '時間' : '') + (m % 60 ? (m % 60) + '分' : '');
+    at('tp-go').textContent = `${hhmm(from)} 〜 ${hhmm(to)} にする`;
   }
 
   const shut = () => { at('tpick').hidden = true; task = null; };
@@ -1707,9 +1774,49 @@ const openTime = (() => {
     draw();
   }
 
-  IDS.forEach(id => at(id).addEventListener('scroll', redraw, { passive: true }));
+  IDS.forEach(id => at(id).addEventListener('scroll', () => { fix(SIDE[id]); redraw(); },
+                                            { passive: true }));
   at('tp-ng').addEventListener('click', shut);
   at('tp-veil').addEventListener('click', shut);
+
+  /* 面を下へ払っても閉じる。上のつまみが「引っ張れる」と言っているのに
+     引っ張れないと、そこで手が止まる。輪とボタンの上の指は取らない */
+  (() => {
+    const GO = 72, WAKE = 7;
+    const sheet = () => document.querySelector('.tp-sheet');
+    let y0 = 0, lock = 'no';
+    const back = () => { sheet().classList.remove('drag'); sheet().style.transform = ''; };
+
+    at('tpick').addEventListener('touchstart', e => {
+      lock = 'no';
+      if (at('tpick').hidden || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (!t.target.closest || t.target.closest('.tp-whl, button')) return;
+      y0 = t.clientY; lock = null;
+    }, { passive: true });
+
+    at('tpick').addEventListener('touchmove', e => {
+      if (lock === 'no' || e.touches.length !== 1) return;
+      const dy = e.touches[0].clientY - y0;
+      if (lock === null) {
+        if (Math.abs(dy) < WAKE) return;
+        if (dy < 0) { lock = 'no'; return; }         // 上へは引っ張らない
+        lock = 'y';
+        sheet().classList.add('drag');
+      }
+      if (e.cancelable) e.preventDefault();
+      sheet().style.transform = `translateY(${Math.max(0, dy)}px)`;
+    }, { passive: false });
+
+    at('tpick').addEventListener('touchend', e => {
+      if (lock !== 'y') { lock = 'no'; return; }
+      lock = 'no';
+      const dy = e.changedTouches[0].clientY - y0;
+      back();
+      if (dy > GO) shut();
+    }, { passive: true });
+    at('tpick').addEventListener('touchcancel', () => { lock = 'no'; back(); }, { passive: true });
+  })();
   at('tp-allday').addEventListener('click', () => put('終日'));
   at('tp-clear').addEventListener('click', () => put(''));
   at('tp-go').addEventListener('click', () => {
@@ -1723,7 +1830,9 @@ const openTime = (() => {
     const c = clock(t.time);
     // 時刻が無い（終日・いつでも）ものは、9:00〜10:00 から回し始める
     const from = c ? c.from : 9 * 60;
-    const to = c && c.to != null ? c.to : from + 60;
+    let to = c && c.to != null ? c.to : from + 60;
+    if (to <= from) to = Math.min(MAXT, from + 60);   // 開いた時点で筋を通しておく
+    dur = to - from;
     const box = at('tpick');
     box.style.setProperty('--c', hue(t.proj || t.title));
     at('tp-nm').textContent = t.title;
@@ -1735,6 +1844,80 @@ const openTime = (() => {
     load('tp-h2', HH, Math.floor(to / 60) % 24);
     load('tp-m2', MM, Math.round((to % 60) / STEP) % MM.length);
     redraw();
+  };
+})();
+
+/* ---------- 時刻を長押しして、1時間ずつずらす ----------
+   叩けばダイヤルで細かく決められるが、「1時間後ろへ」くらいの直しは
+   それだと手数が多い。押さえたまま指を上下に振ると、始まりと終わりが
+   一緒に動く（長さは変わらない）。離すとその場で入る。
+   縦にしたのは、3日の面では時間が上から下へ流れているのと、
+   横は札を払う（削除・MUST）と面を送るの2つに既に使われているため。 */
+const bump = (() => {
+  const HOLD = 420, WAKE = 9, PITCH = 40;   // 長押しの長さ／取り消す距離／1時間ぶんの指の動き
+  const MAXT = 23 * 60 + 55;
+  const at = id => document.getElementById(id);
+  let timer = null, task = null, base = null, y0 = 0, live = false, step = 0, fired = 0;
+
+  const tail = () => (base.to == null ? base.from : base.to);
+  const span = () => ({ from: base.from + step * 60,
+                        to: base.to == null ? null : base.to + step * 60 });
+  const text = s => (s.to == null ? hhmm(s.from) : `${hhmm(s.from)}-${hhmm(s.to)}`);
+  const limit = k => Math.max(-Math.floor(base.from / 60),
+                              Math.min(Math.floor((MAXT - tail()) / 60), k));
+
+  function paint(){
+    const s = span();
+    at('tb-now').textContent = s.to == null ? hhmm(s.from) : `${hhmm(s.from)} 〜 ${hhmm(s.to)}`;
+    at('tb-diff').textContent = step ? (step > 0 ? '＋' : '−') + Math.abs(step) + '時間' : '';
+  }
+  function stop(){
+    clearTimeout(timer); timer = null;
+    removeEventListener('touchmove', move);
+    removeEventListener('touchend', up);
+    removeEventListener('touchcancel', off);
+  }
+  function off(){ at('tbump').hidden = true; live = false; task = null; stop(); }
+
+  function move(e){
+    if (e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - y0;
+    if (!live) {                                    // まだ長押しが決まっていない
+      if (Math.abs(dy) > WAKE) { clearTimeout(timer); timer = null; }
+      return;
+    }
+    if (e.cancelable) e.preventDefault();           // 画面を動かさない
+    const k = limit(Math.round(dy / PITCH));
+    if (k !== step) { step = k; paint(); }
+  }
+  function up(e){
+    if (!live) { off(); return; }
+    if (e.cancelable) e.preventDefault();           // 叩いた扱いにしない（ダイヤルを出さない）
+    fired = Date.now();
+    const t = task, time = text(span()), k = step;
+    off();
+    if (!k) return;                                 // 動かさずに離した＝ただの長押し
+    edit(opTime(t.id, time), `tasks: 時間帯を ${time} に（${t.title}）`);
+    opened.clear();
+    draw();
+  }
+
+  return {
+    // 叩いたのが長押しの直後かどうか。直後ならダイヤルは出さない
+    just: () => Date.now() - fired < 500,
+    on(tag, t){
+      tag.addEventListener('touchstart', e => {
+        if (!pin || e.touches.length !== 1) return;
+        const c = clock(t.time);
+        if (!c) return;                             // 終日など、ずらす先が無いものは何もしない
+        task = t; base = { from: c.from, to: c.to }; step = 0; live = false;
+        y0 = e.touches[0].clientY;
+        addEventListener('touchmove', move, { passive: false });
+        addEventListener('touchend', up);
+        addEventListener('touchcancel', off);
+        timer = setTimeout(() => { live = true; at('tbump').hidden = false; paint(); }, HOLD);
+      }, { passive: true });
+    }
   };
 })();
 
@@ -1849,7 +2032,12 @@ function timeTag(cls, t, txt){
   if (!pin) return tag;
   tag.setAttribute('role','button');
   tag.setAttribute('aria-label', `時間帯を決める: ${t.title}`);
-  tag.addEventListener('click', e => { e.stopPropagation(); openTime(t); });
+  tag.addEventListener('click', e => {
+    e.stopPropagation();
+    if (bump.just()) return;                        // 長押しでずらした直後は開かない
+    openTime(t);
+  });
+  bump.on(tag, t);                                  // 長押しなら1時間ずつずらす
   return tag;
 }
 
@@ -2281,7 +2469,8 @@ function weekTasks(w, h0, h1){
       const to0 = c.to == null ? c.from + 60 : c.to;
       const from = Math.max(c.from, h0 * 60), to = Math.min(to0, h1 * 60);
       if (to - from < 5) continue;
-      days[d].push({ task: t, top: from - h0 * 60, len: to - from, at: c.from, end: to0 });
+      days[d].push({ task: t, top: from - h0 * 60, len: to - from,
+                     abs: d * 1440 + from, at: c.from, end: to0 });
     }
   }
   days.forEach(l => l.sort((a, b) => a.top - b.top));
@@ -2360,6 +2549,7 @@ function taskPill(b, d, pct){
   n.style.left = pct(b.top);
   n.style.width = pct(b.len);
   if (t.must) n.append(el('span','tk-star','★'));
+  n._blk = b;                                        // paintGone が取りこぼしを見る
   n.setAttribute('role','button');
   n.setAttribute('aria-label',
     `${t.must ? 'MUST ' : ''}${hhmm(b.at)} ${t.title}${t.done ? '（済）' : ''}`);
@@ -2385,6 +2575,7 @@ function paintTasks(){
     for (const b of mine[d]) trk.append(taskPill(b, d, pct));
   });
   renderWkDay(null, mine);
+  paintGone();                  // 置き直した札にも、取りこぼしの縁取りを当てる
 }
 
 // days / mine は表を組んだときのものを使い回す（無ければ自分で切り分ける）
@@ -2527,6 +2718,12 @@ function paintGone(){
       const b = n._blk;
       if (!b || b.dim) return;
       n.classList.toggle('late', mins >= b.abs + b.len && !(n._ev && n._ev.status));
+    });
+    // タスクも同じ物差しで見る。終わったのにチェックが無いものを縁取る
+    row.querySelectorAll('.tk').forEach(n => {
+      const b = n._blk;
+      if (!b) return;
+      n.classList.toggle('late', mins >= b.abs + b.len && !b.task.done);
     });
   });
 }
