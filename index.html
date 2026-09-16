@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-16-bump">
+<meta name="app-version" content="2026-09-16-once">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -602,14 +602,6 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 }
 
 /* ---- 選んだ日の中身。ここで印を付ける ---- */
-/* 取りこぼしを拾い直す。表で光っているものと同じ色で結びつける */
-.wkli-pick{
-  grid-column:2;justify-self:start;margin:6px 0 0;
-  appearance:none;border:1px solid #ff5ca8;background:transparent;color:#ff5ca8;
-  font:inherit;font-size:11.5px;font-weight:650;padding:3px 12px;
-  border-radius:999px;cursor:pointer;
-}
-.wkli-pick:active{opacity:.55}
 .wk-cap{font-size:11px;color:var(--ink-3);margin:18px 0 10px;letter-spacing:.04em}
 .wk-cap span{opacity:.7}
 .wkli{display:grid;grid-template-columns:38px 1fr;gap:0 9px;margin-bottom:10px}
@@ -2598,9 +2590,6 @@ function renderWkDay(days, mine){
   // 表で重ねたタスクは、名前の読める形で予定の下に出す。
   // 表は幅が足りず印しか置けないので、何なのかを読むのはこちら
   const tasks = () => wkDayTasks(box, (mine || weekTasks(week, wkWin[0], wkWin[1]))[wkDay], all);
-  // 週の頭から数えた「いま」。取りこぼしの判定に使う（paintGone と同じ物差し）
-  const at = new Date();
-  const gone = (dayNo(ymd(at)) - base) * 1440 + at.getHours() * 60 + at.getMinutes();
   if (!list.length) { box.append(el('div','wk-empty','この日は空です')); tasks(); return; }
 
   for (const b of list) {
@@ -2620,18 +2609,6 @@ function renderWkDay(days, mine){
     row.append(card);
 
     if (pin) card.addEventListener('click', () => cycleStatus(b.ev));
-
-    // 終わりの時刻を過ぎたのに印が無い＝取りこぼし。ここから拾い直せる。
-    // 予定そのものはカレンダーのものなので触らず、タスクを1本足すだけ
-    if (pin && !st && gone >= b.abs + b.len) {
-      const pick = el('button','wkli-pick','タスクにする');
-      pick.addEventListener('click', () => {
-        edit(opAdd(b.ev.summary), `tasks: 追加（${b.ev.summary}）`);
-        draw();
-        toast(`「いつでも」に足しました：${b.ev.summary}`);
-      });
-      row.append(pick);
-    }
     box.append(row);
   }
   tasks();
