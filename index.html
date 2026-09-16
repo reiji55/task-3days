@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-16-once">
+<meta name="app-version" content="2026-09-16-halo">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -250,10 +250,19 @@ button.box:active{transform:scale(.9)}
   background:rgba(0,0,0,.14);color:#14130f;
 }
 .tag.t-time{color:var(--ink);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:650}
-/* 時刻は叩いて回す。叩けることを、案件の札と同じ点線の下線で示す */
-.can-pick{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
-  text-underline-offset:2px;text-decoration-color:var(--ink-3)}
+/* 時刻は叩いて回す。叩けることを、案件の札と同じ点線の下線で示す。
+   長押しして上下にずらす所でもあるので、iOS が先に取っていく仕掛けを全部切る：
+   長押しの吹き出し（touch-callout）、なぞっての文字選択（user-select）、
+   指なりの画面送り（touch-action）。切らないと、ずらしている間に
+   ページの文字が選ばれ、指を離す合図もこちらに来なくなる */
+.can-pick{
+  cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px;text-decoration-color:var(--ink-3);
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:none;
+}
 .can-pick:active{opacity:.55}
+/* ずらしている間は、指が他の文字の上を通っても選ばせない */
+body.holding,body.holding *{-webkit-user-select:none;user-select:none}
 .tl-at.can-pick{text-decoration-color:var(--ink-3)}
 .task.done .tag{opacity:.5}
 .more{grid-column:2 / -1;display:none;gap:6px;margin-top:8px}
@@ -577,22 +586,17 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
 .tk{
   position:absolute;bottom:3px;height:20px;min-width:26px;z-index:5;box-sizing:border-box;
   display:flex;align-items:center;justify-content:center;
-  border-radius:999px;background:var(--panel);border:2px solid var(--c);
-  box-shadow:0 2px 5px -1px rgba(0,0,0,.45);cursor:pointer;
+  border-radius:999px;background:var(--panel);border:2px solid var(--c);cursor:pointer;
+  /* 案件の色で薄く後光を差す。帯の上に乗っているものを、地から浮かせるため。
+     状態の合図ではないので、済みも取りこぼしも関係なく全部に付ける */
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent),
+             0 0 9px 1px color-mix(in srgb, var(--c) 32%, transparent),
+             0 2px 5px -1px rgba(0,0,0,.45);
 }
 /* 見えている札は小さいが、指はその外側まで受ける */
 .tk::before{content:"";position:absolute;inset:-9px -7px}
 .tk:active{transform:scale(.93)}
 .tk-star{position:relative;z-index:1;font-size:11px;line-height:1;font-weight:700;color:var(--c)}
-/* 終わりの時刻を過ぎたのに、チェックを付けていないもの。
-   枠（.ev.late）と同じ色で縁取る。ただし明滅はさせない——
-   札は小さく数も多いので、点いたり消えたりすると表がうるさくなる */
-.tk.late{
-  --g:#ff5ca8;z-index:6;
-  border-color:var(--g);                 /* --c は札ごとに直に入っているので別の名前で持つ */
-  box-shadow:0 0 0 1px color-mix(in srgb, var(--g) 60%, transparent),
-             0 0 9px 1px color-mix(in srgb, var(--g) 34%, transparent);
-}
 /* 済んだタスク。時間割の枠と同じ斜線を、同じ向きで掛ける */
 .tk.done{opacity:.8}
 .tk.done::after{
@@ -1869,7 +1873,11 @@ const bump = (() => {
     removeEventListener('touchend', up);
     removeEventListener('touchcancel', off);
   }
-  function off(){ at('tbump').hidden = true; live = false; task = null; stop(); }
+  function off(){
+    at('tbump').hidden = true;
+    document.body.classList.remove('holding');
+    live = false; task = null; stop();
+  }
 
   function move(e){
     if (e.touches.length !== 1) return;
@@ -1894,6 +1902,10 @@ const bump = (() => {
     draw();
   }
 
+  /* 保険。指を離す合図が来ないまま HUD が残ることが万一あっても、
+     次にどこかを触れば必ず消える。出しっぱなしで操作を塞がない */
+  addEventListener('pointerdown', () => { if (!live && !at('tbump').hidden) off(); }, true);
+
   return {
     // 叩いたのが長押しの直後かどうか。直後ならダイヤルは出さない
     just: () => Date.now() - fired < 500,
@@ -1902,12 +1914,18 @@ const bump = (() => {
         if (!pin || e.touches.length !== 1) return;
         const c = clock(t.time);
         if (!c) return;                             // 終日など、ずらす先が無いものは何もしない
-        task = t; base = { from: c.from, to: c.to }; step = 0; live = false;
+        off();                                      // 前の指が残っていても、ここで仕切り直す
+        task = t; base = { from: c.from, to: c.to }; step = 0;
         y0 = e.touches[0].clientY;
         addEventListener('touchmove', move, { passive: false });
         addEventListener('touchend', up);
         addEventListener('touchcancel', off);
-        timer = setTimeout(() => { live = true; at('tbump').hidden = false; paint(); }, HOLD);
+        timer = setTimeout(() => {
+          live = true;
+          document.body.classList.add('holding');
+          at('tbump').hidden = false;
+          paint();
+        }, HOLD);
       }, { passive: true });
     }
   };
@@ -2461,8 +2479,7 @@ function weekTasks(w, h0, h1){
       const to0 = c.to == null ? c.from + 60 : c.to;
       const from = Math.max(c.from, h0 * 60), to = Math.min(to0, h1 * 60);
       if (to - from < 5) continue;
-      days[d].push({ task: t, top: from - h0 * 60, len: to - from,
-                     abs: d * 1440 + from, at: c.from, end: to0 });
+      days[d].push({ task: t, top: from - h0 * 60, len: to - from, at: c.from, end: to0 });
     }
   }
   days.forEach(l => l.sort((a, b) => a.top - b.top));
@@ -2541,7 +2558,6 @@ function taskPill(b, d, pct){
   n.style.left = pct(b.top);
   n.style.width = pct(b.len);
   if (t.must) n.append(el('span','tk-star','★'));
-  n._blk = b;                                        // paintGone が取りこぼしを見る
   n.setAttribute('role','button');
   n.setAttribute('aria-label',
     `${t.must ? 'MUST ' : ''}${hhmm(b.at)} ${t.title}${t.done ? '（済）' : ''}`);
@@ -2567,7 +2583,6 @@ function paintTasks(){
     for (const b of mine[d]) trk.append(taskPill(b, d, pct));
   });
   renderWkDay(null, mine);
-  paintGone();                  // 置き直した札にも、取りこぼしの縁取りを当てる
 }
 
 // days / mine は表を組んだときのものを使い回す（無ければ自分で切り分ける）
@@ -2695,12 +2710,6 @@ function paintGone(){
       const b = n._blk;
       if (!b || b.dim) return;
       n.classList.toggle('late', mins >= b.abs + b.len && !(n._ev && n._ev.status));
-    });
-    // タスクも同じ物差しで見る。終わったのにチェックが無いものを縁取る
-    row.querySelectorAll('.tk').forEach(n => {
-      const b = n._blk;
-      if (!b) return;
-      n.classList.toggle('late', mins >= b.abs + b.len && !b.task.done);
     });
   });
 }
