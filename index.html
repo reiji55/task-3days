@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-16-halo">
+<meta name="app-version" content="2026-09-17-pick">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -524,6 +524,13 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   white-space:normal;word-break:break-all;
 }
 .ev.nolabel .nm{display:none}
+/* 叩いた帯そのものを数秒だけ囲う。名前が中に入っていて下に札が出ない帯でも、
+   どれを叩いたのかが返るように。囲いは下の札（.wk-chip.lit）と同じ出かた */
+.ev.lit{
+  z-index:5;
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--c) 68%, transparent);
+  transition:box-shadow .5s ease;animation:chip-lit .2s ease-out;
+}
 /* 睡眠・生活時間。逆向きの細い線で、済んだ枠と見間違えないようにする */
 .ev.dim{
   border-left-color:transparent;cursor:default;opacity:.6;
@@ -634,6 +641,13 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
 /* 予定の⭕️の緑は持ち込まない。タスクの「済」は取り消し線だけで足りる */
 .wkli.is-task.done .wkli-card{background:var(--bg)}
+/* 表の札から送られてきた当人。何を叩いたのかを数秒だけ返す */
+.wkli.is-task.lit .wkli-card{
+  background:color-mix(in srgb, var(--c) 11%, var(--bg));
+  box-shadow:0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
+  animation:chip-lit .2s ease-out;
+}
+.wkli.is-task .wkli-card{transition:background .5s ease, box-shadow .5s ease}
 /* 何とぶつかっているか。ここを読ませたくてこの節がある */
 .wkli-hit{font-size:11px;color:var(--warn);margin-top:2px}
 /* 印は点線の四角にそのまま収まる。付くときだけ、すっと出る */
@@ -2035,6 +2049,9 @@ const hue = (() => {
   };
 })();
 
+// 左の欄に出す短い表記。「09:00-10:00」は始まりだけ、「終日」はそのまま
+const atLabel = t => { const c = clock(t.time); return c ? hhmm(c.from) : t.time; };
+
 /* 時刻の札。編集できるなら叩いて回せる。案件の札と同じ点線の下線で示す。
    「終日」もここを通るので、終日のタスクも叩いて時刻を入れられる */
 function timeTag(cls, t, txt){
@@ -2053,7 +2070,7 @@ function timeTag(cls, t, txt){
 
 /* ---- タスク1枚 ---- */
 
-function renderCard(t, lead, fold){
+function renderCard(t, lead, fold, atLeft){
   const wrap = el('div','task-wrap');
   const card = el('div','task' + (t.done ? ' done' : '') + (pin ? ' can-edit' : '')
     + (fold ? ' fold' : ''));
@@ -2098,7 +2115,7 @@ function renderCard(t, lead, fold){
   }
 
   const meta = el('div','meta');
-  if (!lead && t.time) meta.append(timeTag('tag t-time', t));
+  if (!lead && !atLeft && t.time) meta.append(timeTag('tag t-time', t));
   if (t.type) {
     const k = TYPE_MAP[t.type] || '';
     meta.append(el('span', 'tag ' + (k ? 't-'+k : 't-proj'), t.type));
@@ -2192,9 +2209,11 @@ function renderOne(key, list, anytime, todayKey){
   if (must.length) {
     const g = el('div','grp is-must');
     g.append(el('div','grp-head','MUST'));
+    // ここも畳んだ札なので、時刻は左の欄に出す（終日と同じ理由）
     for (const t of must) g.append(flatRow(
-      rightAct(renderCard(t, null, true).wrap, 'must', 'MUST を外す',
-               () => toggleMust(t.id, false, t.title))));
+      rightAct(renderCard(t, null, true, !!t.time).wrap, 'must', 'MUST を外す',
+               () => toggleMust(t.id, false, t.title)),
+      t.time ? timeTag('tl-at', t, atLabel(t)) : null));
     sec.append(g);
   }
 
@@ -2208,9 +2227,12 @@ function renderOne(key, list, anytime, todayKey){
   if (allday.length) {
     const g = el('div','grp is-allday');
     g.append(el('div','grp-head','終日'));
+    // 「終日」も、タイムラインの時刻と同じ欄・同じ大きさで左に置く。
+    // 畳んだ札の中に小さく入れていると、どこから直せるのか分からない
     for (const t of allday) g.append(flatRow(
-      rightAct(renderCard(t, null, true).wrap, 'must', 'MUST へ',
-               () => toggleMust(t.id, true, t.title))));
+      rightAct(renderCard(t, null, true, !!t.time).wrap, 'must', 'MUST へ',
+               () => toggleMust(t.id, true, t.title)),
+      t.time ? timeTag('tl-at', t, atLabel(t)) : null));  // 何も無いものは空欄のまま
     sec.append(g);
   }
 
@@ -2285,8 +2307,10 @@ function toggleMust(id, on, title){
 }
 
 // 時刻の無い札。左の時刻の欄は空けたまま、タイムラインと頭を揃える
-function flatRow(wrap){
+// 左の欄（時刻）は省いてよい。省くと札だけが2列目に入る
+function flatRow(wrap, lead){
   const row = el('div','flat-row');
+  if (lead) row.append(lead);
   row.append(wrap);
   return row;
 }
@@ -2530,18 +2554,33 @@ function pack(list){
 
 let wkDay = null;             // 週の頭から何日目を下に出しているか
 let wkWin = [5, 26];          // いま描いている時間の窓
-let wkPick = null, pickT = 0; // 直前に叩いた帯。名前が下に回っていたらそれを囲う
+/* 直前に叩いたもの。叩いた手応えとして数秒だけ囲う。
+   帯は下に回った名前と帯そのものを、タスクは下の一覧の当人を光らせる */
+let wkPick = null, wkTaskPick = null, pickT = 0;
+
+// 囲いを外す。作り直すと画面が跳ねるので、印だけ外して CSS に消させる
+function unlit(){
+  wkPick = null; wkTaskPick = null;
+  document.querySelectorAll('.lit').forEach(n => n.classList.remove('lit'));
+}
 
 // 帯を叩いたときの返事。その日を下に出し、名前が下の札にあるなら少しの間だけ囲う
 function pickEvent(d, ev){
-  wkDay = d; wkPick = ev;
+  wkDay = d; wkPick = ev; wkTaskPick = null;
   renderWeek();
   clearTimeout(pickT);
-  pickT = setTimeout(() => {
-    wkPick = null;
-    // 作り直すと画面が跳ねるので、印だけ外して CSS に消させる
-    document.querySelectorAll('.wk-chip.lit').forEach(n => n.classList.remove('lit'));
-  }, 2600);
+  pickT = setTimeout(unlit, 2600);
+}
+
+/* 表の札を叩いたとき。その日に切り替えたうえで、下の一覧の当人まで送って光らせる。
+   表の札は名前を持てないので、送ってやらないと「どれを叩いたのか」が分からない */
+function pickTask(d, t){
+  wkDay = d; wkTaskPick = t.id; wkPick = null;
+  renderWeek();
+  const row = document.querySelector('.wkli.is-task.lit');
+  if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  clearTimeout(pickT);
+  pickT = setTimeout(unlit, 2600);
 }
 
 const STAMP_OK = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
@@ -2561,7 +2600,7 @@ function taskPill(b, d, pct){
   n.setAttribute('role','button');
   n.setAttribute('aria-label',
     `${t.must ? 'MUST ' : ''}${hhmm(b.at)} ${t.title}${t.done ? '（済）' : ''}`);
-  n.addEventListener('click', () => { wkDay = d; renderWeek(); });
+  n.addEventListener('click', () => pickTask(d, t));
   return n;
 }
 
@@ -2642,7 +2681,8 @@ function wkDayTasks(box, mine, blocks){
 
   for (const b of mine) {
     const t = b.task;
-    const row = el('div','wkli is-task' + (t.done ? ' done' : ''));
+    const row = el('div','wkli is-task' + (t.done ? ' done' : '')
+      + (t.id === wkTaskPick ? ' lit' : ''));
     row.style.setProperty('--c', hue(t.proj || t.title));
     row.append(el('div','wkli-at', hhmm(b.at)));
 
@@ -2807,7 +2847,7 @@ function renderWeek(){
     const stack = el('div','wk-stack');
     const trk = el('div','wk-trk');
     for (const b of days[d]) {
-      const n = el('div','ev' + (b.dim ? ' dim' : ''));
+      const n = el('div','ev' + (b.dim ? ' dim' : '') + (b.ev === wkPick ? ' lit' : ''));
       n.style.setProperty('--c', b.color);
       n.style.left = pct(b.top);
       n.style.width = pct(b.len);
