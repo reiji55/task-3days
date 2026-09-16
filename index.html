@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="3日間タスク">
 <!-- version.txt と同じ値にする。食い違ったら画面が自分で読み直す -->
-<meta name="app-version" content="2026-09-17-pick">
+<meta name="app-version" content="2026-09-17-sync">
 <title>3日間タスク</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -532,9 +532,15 @@ body.on-detail #tabs{display:none}   /* 詳細は全画面。裏に残さない 
   transition:box-shadow .5s ease;animation:chip-lit .2s ease-out;
 }
 /* 睡眠・生活時間。逆向きの細い線で、済んだ枠と見間違えないようにする */
+/* 「先に抜いてある時間」だとひと目で分かる濃さにする。薄すぎると空き時間に
+   見えてしまい、そこにタスクを置いたあとで「重なっています」と言われて話が食い違う */
 .ev.dim{
-  border-left-color:transparent;cursor:default;opacity:.6;
-  background:repeating-linear-gradient(45deg, var(--line) 0 1px, transparent 1px 9px);
+  border-left-color:transparent;cursor:default;opacity:1;
+  background:
+    repeating-linear-gradient(45deg,
+      color-mix(in srgb, var(--ink-3) 44%, transparent) 0 1.5px,
+      transparent 1.5px 6px),
+    color-mix(in srgb, var(--ink-3) 9%, transparent);
 }
 /* 済んだ枠は、枠の色の濃い斜線を字の上からそのまま被せる */
 .ev.done::after{
@@ -1526,8 +1532,14 @@ let saveTimer = null;
 let saving = false;
 let lastMsg = '';
 
-// タスクは3日の面と週の面の両方に出るので、直したら両方を描き直す
-const draw = () => { render(parse(text).days); paintTasks(); };
+/* タスクは3日の面・週の面・ガイドの内訳の3か所に出る。直したら全部描き直す。
+   ガイドを外すと、tasks.txt と board.json のどちらが先に届くかで
+   「内訳が出ない」「案件の札に下線が出ない」のどちらかが起きる */
+const draw = () => {
+  render(parse(text).days);
+  paintTasks();
+  if (board) renderBoard();
+};
 const dirty = () => pending.length > 0 || saving;
 
 function schedule(ms){
@@ -1981,7 +1993,7 @@ function cardFor(proj){
 /* そのカードに結びつく、残っているタスクがどこに何件あるか。
    3日の面へ飛ばしても「どこへ連れて行かれたのか」が分からないので、
    居場所をそのまま名前で出す。並びは画面のタブと同じ順にそろえる */
-function openFor(title){
+function openFor(title, days){
   if (!String(title || '').trim()) return [];
   const { today, win } = window3();
   const name = key =>
@@ -1990,7 +2002,7 @@ function openFor(title){
     : key < today ? '未完了' : '先の予定';
 
   const n = new Map();
-  for (const [key, list] of parse(text).days)
+  for (const [key, list] of (days || parse(text).days))
     for (const t of list) if (!t.done && sameName(t.proj, title)) {
       const w = name(key);
       n.set(w, (n.get(w) || 0) + 1);
@@ -2564,10 +2576,26 @@ function unlit(){
   document.querySelectorAll('.lit').forEach(n => n.classList.remove('lit'));
 }
 
-// 帯を叩いたときの返事。その日を下に出し、名前が下の札にあるなら少しの間だけ囲う
+/* 選んだ日と囲いだけを塗り直す。表は作り直さない——
+   作り直すと、取りこぼしの帯の明滅が頭から始まってしまい、
+   関係ない帯まで叩くたびにいっせいに光る */
+function pickShow(){
+  // 先に古い囲いを外す。下の一覧はこのあと作り直すので、そちらの囲いは
+  // 作るときに入る（順番を逆にすると、入れたばかりの囲いを自分で外してしまう）
+  document.querySelectorAll('.lit').forEach(n => n.classList.remove('lit'));
+  document.querySelectorAll('.wk-row').forEach(row =>
+    row.classList.toggle('on', Number(row.dataset.d) === wkDay));
+  renderWkDay();
+  if (wkPick) {
+    document.querySelectorAll('.wk-trk .ev, .wk-under .wk-chip')
+      .forEach(n => { if (n._ev === wkPick) n.classList.add('lit'); });
+  }
+}
+
+// 帯を叩いたときの返事。その日を下に出し、叩いた帯を少しの間だけ囲う
 function pickEvent(d, ev){
   wkDay = d; wkPick = ev; wkTaskPick = null;
-  renderWeek();
+  pickShow();
   clearTimeout(pickT);
   pickT = setTimeout(unlit, 2600);
 }
@@ -2576,7 +2604,7 @@ function pickEvent(d, ev){
    表の札は名前を持てないので、送ってやらないと「どれを叩いたのか」が分からない */
 function pickTask(d, t){
   wkDay = d; wkTaskPick = t.id; wkPick = null;
-  renderWeek();
+  pickShow();
   const row = document.querySelector('.wkli.is-task.lit');
   if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
   clearTimeout(pickT);
@@ -2841,7 +2869,7 @@ function renderWeek(){
     cell.append(el('b', null, dow[d]),
                 el('span', null, new Date((base + d) * 86400000).getUTCMonth() + 1 + '/' +
                                  new Date((base + d) * 86400000).getUTCDate()));
-    cell.addEventListener('click', () => { wkDay = d; renderWeek(); });
+    cell.addEventListener('click', () => { wkDay = d; unlit(); pickShow(); });
     row.append(cell);
 
     const stack = el('div','wk-stack');
@@ -3114,7 +3142,7 @@ function grow(ta){
 }
 
 // 一覧のカード1枚。日付と見出しだけを、色の付いた札に載せる
-function bdCard(c, i){
+function bdCard(c, i, days){
   const node = el('article','bd-card');
   node.style.setProperty('--c', hue(c.title));      // 案件の色。並び順では決めない
   node.style.zIndex = String(i + 1);            // 後のカードが手前に重なる
@@ -3123,7 +3151,7 @@ function bdCard(c, i){
   node.append(el('div','bd-when', c.created || ''),
               el('div','bd-name', (c.title || '').trim() || '(無題)'));
   // 「どうやるか」の裏で、いまどこに何件残っているか
-  const where = openFor(c.title);
+  const where = openFor(c.title, days);
   if (where.length) node.append(el('div','bd-tasks', where.join('・')));
   node.addEventListener('click', () => { bdBack = ''; bdShow(i); });   // 一覧から開いたぶん
   return node;
@@ -3155,7 +3183,8 @@ function renderBoard(){
       : pin ? '右上の ＋ から書き始められます。' : 'まだ何も書かれていません。'));
     return;
   }
-  list.forEach(({ c, i }) => stack.append(bdCard(c, i)));
+  const days = parse(text).days;              // 内訳のために1度だけ切り分ける
+  list.forEach(({ c, i }) => stack.append(bdCard(c, i, days)));
 }
 
 /* ---------- ボードの詳細（全画面） ----------
@@ -3329,7 +3358,15 @@ function restoreDraft(){
   bdSay('未保存の下書きがあります');
 }
 
-async function loadBoard(){
+/* 起動時は applyView と最後の呼び出しの両方から来ることがある。
+   同じものを二度取りに行かないよう、走っている間は同じ約束を返す */
+let boardBusy = null;
+function loadBoard(){
+  if (!boardBusy) boardBusy = fetchBoard().finally(() => { boardBusy = null; });
+  return boardBusy;
+}
+
+async function fetchBoard(){
   const r = await getDoc('board', BOARD_SRC, g => Array.isArray(g.cards));
   boardSha = r.sha;                // 公開ファイルから読んだときは null＝書き戻せない
   boardErr = r.err;
